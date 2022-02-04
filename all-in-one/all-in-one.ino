@@ -2,16 +2,18 @@
 //Настройки: энкодер (EB_BETTER_ENC, EB_HALFSTEP_ENC, EB_FAST, buttpin, A, B (пины энкодера)), указатели поворота (turnpin1, turnpin2),
 //TM1637 (CLK, DIO), аналоговые преобразования (analogpin1, analogpin2, сопротивление резисторов r1, r2, r3, r4 в делителе напряжения,
 //калибровка calibration1, calibration2), калибровка температуры процессора (tempsizing), пин пищалки (buzz) LiquidCrystal_I2C (настройка адреса),
+//MAX6675_DELAY (задержка переключения CLK в микросекундах для улучшения связи по длинным проводам),
 //настройка меню (SETTINGS_AMOUNT, FAST_STEP), настройки препроцессором (bufferBatt, RPMwarning). Остальные настройки производятся через
 //меню бортового компьютера.
 //Можно искать настройки по тексту программы через Ctrl + F
 
-//Version 2.4.0
+//Version 2.4.1
 #include <EEPROM.h>
 #include <GyverWDT.h> //библиотека сторожевого таймера
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include <max6675.h>
+#define MAX6675_DELAY 10 //задержка переключения CLK в микросекундах (для улучшения связи по длинным проводам)
+#include <GyverMAX6675.h>
 #include <GyverTM1637.h>
 #include <GetVolt.h>
 #include <GetCPUTemp.h>//пин А7 невозможно больше использовать
@@ -36,13 +38,13 @@ const byte degree[8] = {140, 146, 146, 140, 128, 128, 128, 128}; // Опреде
 const byte battL[8] = {B00100, B11111, B10000, B10010, B10111, B10010, B10000, B11111}; //  _-____-_
 const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B11111}; // | +    - |
 //                                                                                         |________|
-#define thermoDO 6  // Определяем константу с указанием № вывода Arduino к которому подключён вывод DO  ( SO, MISO ) модуля на чипе MAX6675
+#define thermoSO 6  // Определяем константу с указанием № вывода Arduino к которому подключён вывод DO  ( SO, MISO ) модуля на чипе MAX6675
 #define thermoCS 5  // Определяем константу с указанием № вывода Arduino к которому подключён вывод CS  ( SS )       модуля на чипе MAX6675
-#define thermoCLK 4 // Определяем константу с указанием № вывода Arduino к которому подключён вывод CLK ( SCK )      модуля на чипе MAX6675
+#define thermoSCK 4 // Определяем константу с указанием № вывода Arduino к которому подключён вывод CLK ( SCK )      модуля на чипе MAX6675
 
-#define thermoDO2 7 //для правого датчика
+#define thermoSO2 7 //для правого датчика
 #define thermoCS2 8
-#define thermoCLK2 9
+#define thermoSCK2 9
 
 #define turnpin1 11 //пины указателей поворота
 #define turnpin2 12
@@ -61,8 +63,9 @@ const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B
 #define tempsizing 289.0 //калибровочное значение для измерения температуры процессора
 
 GetCPUTemp temperature (tempsizing);
-MAX6675   thermo(thermoCLK, thermoCS, thermoDO); // Объявляем объект thermo для работы с функциями и методами библиотеки MAX6675, указывая выводы ( CLK , CS , DO )
-MAX6675   thermo2(thermoCLK2, thermoCS2, thermoDO2);
+// указываем пины в порядке SCK SO CS
+GyverMAX6675<thermoSCK, thermoSO, thermoCS> thermo;
+GyverMAX6675<thermoSCK2, thermoSO2, thermoCS2> thermo2;
 LiquidCrystal_I2C lcd(0x27, 16, 2); // устанавливаем адрес 0x27 LCD для 16 сегментного и 2 строчного дисплея
 GyverTM1637 disp(CLK, DIO);
 Tachometer tacho;
@@ -410,8 +413,8 @@ void loop() {
         }
         else {
           if (R < 500) {
-            lcd.setCursor(9, 0);
-            lcd.print(F(" Hello "));
+            lcd.setCursor(8, 0);
+            lcd.print(F("  Hello "));
           }
           else {
             lcd.setCursor(8, 0);
@@ -526,8 +529,10 @@ void loop() {
 }
 
 void thermocouple() {
-  t1 = thermo.readCelsius() - 2;
-  t2 = thermo2.readCelsius() - 2;
+  if (thermo.readTemp()) t1 = thermo.getTempInt() - 2;
+  else t1 = NAN;
+  if (thermo2.readTemp()) t2 = thermo2.getTempInt() - 2;
+  else t2 = NAN;
 }
 
 /*--выводим версию программы, напряжение буферного аккумулятора (если есть) и время поездки--*/
@@ -537,7 +542,7 @@ void isButtonSingle() { // действия после одиночного на
   disp.displayByte(0, _U);//выводим версию программы на дисплей
   disp.display(1, 2);
   disp.display(2, 4);
-  disp.display(3, 0);
+  disp.display(3, 1);
   lcd.clear();//очищаем дисплей для показа парамтров
   while (millis() - myTimer5 < 3000) {
     lcd.setCursor(0, 0);
