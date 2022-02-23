@@ -7,7 +7,7 @@
 //меню бортового компьютера.
 //Можно искать настройки по тексту программы через Ctrl + F
 
-//Version 2.4.1
+//Version 2.4.2
 #include <EEPROM.h>
 #include <GyverWDT.h> //библиотека сторожевого таймера
 #include <Wire.h>
@@ -71,19 +71,19 @@ GyverTM1637 disp(CLK, DIO);
 Tachometer tacho;
 /*для меню настроек:*/
 #define LINES 2       // количество строк дисплея
-#define SETTINGS_AMOUNT 6  // количество настроек
+#define SETTINGS_AMOUNT 7  // количество настроек
 #define FAST_STEP 10   // скорость изменения при быстром повороте
 
 EncButton<EB_TICK, A, B, buttpin> enc;   // энкодер с кнопкой <A, B, KEY> (A, B, KEY - номера пинов)
 
-#define r1 23524.33 //сопротивление резистора r1
-#define r2 2737.44 // сопротивление резистора r2
+#define r1 22700.0 //сопротивление резистора r1
+#define r2 2710.0 // сопротивление резистора r2
 #define calibration1 1.12
 GetVolt firstbatt (r1, r2, calibration1);
 
 #ifdef bufferBatt
-#define r3 46400.0
-#define r4 5550.0
+#define r3 46450.0
+#define r4 5580.0
 #define calibration2 1.12
 GetVolt secondbatt (r3, r4, calibration2);
 #endif
@@ -92,7 +92,7 @@ float input_volt = 0.0;
 float buff_input_volt = 0.0;
 
 uint32_t myTimer1, myTimer2, myTimer3, myTimer4, myTimer7, myTimer9, myTimer10;
-boolean z, j, bv, Hold, L, P;//i - для мигания текстом и светодиодом, j - для мигания светодиода при высоких оборотах, P - смотри на код меню,
+boolean z, j, bv, Hold, L, P;//i - для мигания текстом и светодиодом, j - для мигания светодиода при высоких оборотах,P - смотри на код меню
 boolean ledState = LOW;//bv - для показа напряжения буферного аккумулятора, Hold - в меню неастроек, L - обновление значений счётчика моточасов
 int t1, t2, R;
 float e_hours, maxV, minV;
@@ -106,10 +106,11 @@ const char name3[] PROGMEM = "MaxVoltage";
 const char name4[] PROGMEM = "Buzz Enable";
 const char name5[] PROGMEM = "LED-PWM";
 const char name6[] PROGMEM = "MotorH-to-0";
+const char name7[] PROGMEM = "MaxCylTemp";
 
 // объявляем таблицу ссылок
 const char* const names[] PROGMEM = {
-  name1, name2, name3, name4, name5, name6
+  name1, name2, name3, name4, name5, name6, name7
 };
 
 int vals[SETTINGS_AMOUNT];  // массив параметров
@@ -130,12 +131,12 @@ const char* const vars[] PROGMEM = {
 
 
 void setup() {
-//!!!Обязательно размещается в начале setup, иначе уходит в bootloop!!!
+  //!!!Обязательно размещается в начале setup, иначе уходит в bootloop!!!
   Watchdog.enable(RESET_MODE, WDT_PRESCALER_1024);//режим сброса при зависании, таймаут 8 сек.
-//Либо размещается в любом месте сетапа, но с условием отключения WDT в начале сэтапа функцией watchdog.disable()
-//Это связано с тем, что контроллер автоматически ставит таймаут WDT на 16 мс и, если функция watchdog.enable() стоит не в начале, код до неё может
-//выполняться дольше 16 мс и контроллер уходит в bootloop, вернее WDT перезагружает контроллер каждые 16 мс. Может случиться, что даже если сбросили
-//таймер в начале сетапа, контроллер всё равно уходит в bootloop, тогда необходимо перепрошить загрузчик или убрать его совсем.
+  //Либо размещается в любом месте сетапа, но с условием отключения WDT в начале сэтапа функцией watchdog.disable()
+  //Это связано с тем, что контроллер автоматически ставит таймаут WDT на 16 мс и, если функция watchdog.enable() стоит не в начале, код до неё может
+  //выполняться дольше 16 мс и контроллер уходит в bootloop, вернее WDT перезагружает контроллер каждые 16 мс. Может случиться, что даже если сбросили
+  //таймер в начале сетапа, контроллер всё равно уходит в bootloop, тогда необходимо перепрошить загрузчик или убрать его совсем.
 
   lcd.init();//инициализация lcd1602
   //pinMode(turnpin1, INPUT); //для указателей поворота | при загрузке скетча через USBasp отсоединить
@@ -159,7 +160,7 @@ void setup() {
 
   lcd.backlight();//подсветка lcd1602
   lcd.setCursor(0, 0);
-  printFromPGM(_t1);//t1
+  printFromPGM(_t1);//t1 вывод строки осуществляется через функцию printFromPGM
   lcd.setCursor(0, 1);
   printFromPGM(_t2);//t2
   lcd.setCursor(10, 1);
@@ -225,7 +226,7 @@ void loop() {
       printGUI(); //печатаем на дисплее (названия настроек)
     }
     /*или если не перешёл в режим прокрутки меню (и при выключении), а просто вышел, тоже сохраняем*/
-    if ((controlState && enc.press()) || input_volt < minV) EEPROM.put(4, vals);
+    if ((enc.press() && controlState) || input_volt < minV) EEPROM.put(4, vals);
 
     if (enc.turn()) { //если повернули (факт поворота)
       int increment = 0;  // локальная переменная направления
@@ -250,6 +251,7 @@ void loop() {
       vals[3] = constrain(vals[3], 0, 1);//пищалка указателей поворота
       vals[4] = constrain(vals[4], 0, 255);//параметр яркости светодиода
       vals[5] = constrain(vals[5], 0, 1);//параметр обнуления моточасов
+      vals[6] = constrain(vals[6], 0, 800);//параметр максимальной температуры цилиндров
       minV = float(vals[1]) / 10;//делим на 10, чтобы получить флоат с 1 знаком после точки
       maxV = float(vals[2]) / 10;
       if (vals[5] == 1) {//если равно единице обнуляем счётчик моточасов (покрутить энкодер)
@@ -365,81 +367,55 @@ void loop() {
 
 
   if (!Hold) {
-    if (t1 > 140 ||  t2 > 140) {
+    lcd.setCursor(8, 0);
+    if (t1 > vals[6] || t2 > vals[6]) {
       switch (z) {
         case 1:
-          lcd.setCursor(8, 0);
-          lcd.print(F("OVERHEAT"));
+          lcd.print(F("OVERheat"));
           break;
         case 0:
-          lcd.setCursor(8, 0);
-          lcd.print(F("        "));
-          if (input_volt < minV) {
-            lcd.setCursor(9, 0);
-            lcd.print(F("LOWvolt"));
-          }
-          if (input_volt > maxV) {
-            lcd.setCursor(8, 0);
-            lcd.print(F("OVERvolt"));
-          }
+          if (input_volt < minV) lcd.print(F("LOWvolt "));
+          else if (input_volt > maxV) lcd.print(F("OVERvolt"));
+          else lcd.print(F("        "));
           break;
       }
     }
-    else {
-      if (input_volt < minV) {
-        switch (z) {
-          case 1:
-            lcd.setCursor(9, 0);
-            lcd.print(F("LOWvolt"));
-            break;
-          case 0:
-            lcd.setCursor(8, 0);
-            lcd.print(F("        "));
-            break;
-        }
-      }
-      else {
-        if (input_volt > maxV) {
-          switch (z) {
-            case 1:
-              lcd.setCursor(8, 0);
-              lcd.print(F("OVERvolt"));
-              break;
-            case 0:
-              lcd.setCursor(8, 0);
-              lcd.print(F("        "));
-              break;
-          }
-        }
-        else {
-          if (R < 500) {
-            lcd.setCursor(8, 0);
-            lcd.print(F("  Hello "));
-          }
-          else {
-            lcd.setCursor(8, 0);
-            lcd.print(F("        "));
-          }
-        }
+    else if (input_volt < minV) {
+      switch (z) {
+        case 1:
+          lcd.print(F("LOWvolt"));
+          break;
+        case 0:
+          lcd.print(F("        "));
+          break;
       }
     }
+    else if (input_volt > maxV) {
+      switch (z) {
+        case 1:
+          lcd.print(F("OVERvolt"));
+          break;
+        case 0:
+          lcd.print(F("        "));
+          break;
+      }
+    }
+    else if (R < 500) lcd.print(F("  Hello "));
+    else lcd.print(F("        "));
   }
 
   /*--управление светодиодом--*/
-  if ((!Hold) && (millis() - myTimer10 > 1200) && ((t1 > 140) ||  (t2 > 140) || (input_volt < minV) || (input_volt > maxV))) {
+  if ((!Hold) && (millis() - myTimer10 > 1200) && ((t1 > vals[6]) ||  (t2 > vals[6]) || (input_volt < minV) || (input_volt > maxV))) {
     //управляем светодиодом если прошло больше секунды с момента включения указателей поворота
     switch (z) {
       case 1:
         ledState = HIGH;
-        digitalWrite(ledpin, ledState);
         break;
       case 0:
-        if ((digitalRead(turnpin1) == LOW ) || (digitalRead(turnpin2) == LOW)) {
-          ledState = LOW;
-        }
-        digitalWrite(ledpin, ledState);
+        if ((digitalRead(turnpin1) == LOW ) || (digitalRead(turnpin2) == LOW)) ledState = LOW;
         break;
     }
+    digitalWrite(ledpin, ledState);
   }
 #ifdef bufferBatt
   if ((!Hold) && (buff_input_volt < minV)) {
@@ -542,8 +518,8 @@ void isButtonSingle() { // действия после одиночного на
   disp.displayByte(0, _U);//выводим версию программы на дисплей
   disp.display(1, 2);
   disp.display(2, 4);
-  disp.display(3, 1);
-  lcd.clear();//очищаем дисплей для показа парамтров
+  disp.display(3, 2);
+  lcd.clear();//очищаем дисплей для показа параметров
   while (millis() - myTimer5 < 3000) {
     lcd.setCursor(0, 0);
     lcd.print(F("trip time:"));
