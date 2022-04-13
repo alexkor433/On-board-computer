@@ -120,7 +120,7 @@ int vals[SETTINGS_AMOUNT];  // массив параметров
 int8_t arrowPos = 0;
 bool controlState = 0;  // клик
 
-#define cels &vars[0]//макросы параметров для передачи в функцию printFromPGM для уменьшения
+#define cels &vars[0]//макросы параметров для передачи в функцию printFromPGM для уменьшения используемой оперативки
 #define _t1 &vars[1]
 #define _t2 &vars[2]
 
