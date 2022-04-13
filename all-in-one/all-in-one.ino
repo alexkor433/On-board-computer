@@ -3,11 +3,11 @@
 //TM1637 (CLK, DIO), аналоговые преобразования (analogpin1, analogpin2, сопротивление резисторов r1, r2, r3, r4 в делителе напряжения,
 //калибровка calibration1, calibration2), калибровка температуры процессора (tempsizing), пин пищалки (buzz) LiquidCrystal_I2C (настройка адреса),
 //MAX6675_DELAY (задержка переключения CLK в микросекундах для улучшения связи по длинным проводам),
-//настройка меню (SETTINGS_AMOUNT, FAST_STEP), настройки препроцессором (bufferBatt, RPMwarning). Остальные настройки производятся через
-//меню бортового компьютера.
+//настройка меню (SETTINGS_AMOUNT, FAST_STEP), настройки препроцессором (bufferBatt, RPMwarning, buzzPassive, buzzActive). Остальные настройки
+//производятся через меню бортового компьютера.
 //Можно искать настройки по тексту программы через Ctrl + F
 
-//Version 2.4.2
+//Version 2.4.3
 #include <EEPROM.h>
 #include <GyverWDT.h> //библиотека сторожевого таймера
 #include <Wire.h>
@@ -20,12 +20,14 @@
 #include <Tachometer.h>
 #define EB_BETTER_ENC  // улучшенный алгоритм опроса энкодера. Добавит 16 байт SRAM при подключении библиотеки
 //подключать в зависимости от качества энкодера или при подключении режима полушаговых энк`ов
-#define EB_HALFSTEP_ENC //режим для полушаговых энкодеров !!!ПОДКЛЮЧАЕТСЯ ТОЛЬКО С EB_BETTER_ENC!!!
+#define EB_HALFSTEP_ENC //режим для полушаговых энкодеров
 #define EB_FAST 60     // таймаут быстрого поворота, мс
 #include <EncButton.h>
 
 //#define bufferBatt//включение обработки буферного аккумулятора
 //#define RPMwarning//включение предупреждения о высоких оборотах
+//#define buzzPassive
+#define buzzActive
 
 // Переменные, создаваемые процессом сборки,
 // когда компилируется скетч для показа свободной оперативки
@@ -55,9 +57,9 @@ const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B
 #ifdef bufferBatt
 #define analogpin2 15 //A1 напряжения аккумуляторов
 #endif
-#define buttpin 10
+#define buttpin 13
 #define ledpin 3
-#define buzz 13//пин пищалки
+#define buzz 10//пин пищалки
 #define A 16 //A2
 #define B 17 //A3
 #define tempsizing 289.0 //калибровочное значение для измерения температуры процессора
@@ -71,7 +73,7 @@ GyverTM1637 disp(CLK, DIO);
 Tachometer tacho;
 /*для меню настроек:*/
 #define LINES 2       // количество строк дисплея
-#define SETTINGS_AMOUNT 7  // количество настроек
+#define SETTINGS_AMOUNT 8  // количество настроек
 #define FAST_STEP 10   // скорость изменения при быстром повороте
 
 EncButton<EB_TICK, A, B, buttpin> enc;   // энкодер с кнопкой <A, B, KEY> (A, B, KEY - номера пинов)
@@ -92,7 +94,7 @@ float input_volt = 0.0;
 float buff_input_volt = 0.0;
 
 uint32_t myTimer1, myTimer2, myTimer3, myTimer4, myTimer7, myTimer9, myTimer10;
-boolean z, j, bv, Hold, L, P;//i - для мигания текстом и светодиодом, j - для мигания светодиода при высоких оборотах,P - смотри на код меню
+boolean z, j, bv, Hold, L, P;//z - для мигания текстом и светодиодом, j - для мигания светодиода при высоких оборотах,P - смотри на код меню
 boolean ledState = LOW;//bv - для показа напряжения буферного аккумулятора, Hold - в меню неастроек, L - обновление значений счётчика моточасов
 int t1, t2, R;
 float e_hours, maxV, minV;
@@ -107,17 +109,18 @@ const char name4[] PROGMEM = "Buzz Enable";
 const char name5[] PROGMEM = "LED-PWM";
 const char name6[] PROGMEM = "MotorH-to-0";
 const char name7[] PROGMEM = "MaxCylTemp";
+const char name8[] PROGMEM = "Buzzer Test";
 
 // объявляем таблицу ссылок
 const char* const names[] PROGMEM = {
-  name1, name2, name3, name4, name5, name6, name7
+  name1, name2, name3, name4, name5, name6, name7, name8
 };
 
 int vals[SETTINGS_AMOUNT];  // массив параметров
 int8_t arrowPos = 0;
 bool controlState = 0;  // клик
 
-#define cels &vars[0]
+#define cels &vars[0]//макросы параметров для передачи в функцию printFromPGM для уменьшения
 #define _t1 &vars[1]
 #define _t2 &vars[2]
 
@@ -142,7 +145,7 @@ void setup() {
   //pinMode(turnpin1, INPUT); //для указателей поворота | при загрузке скетча через USBasp отсоединить
   //pinMode(turnpin2, INPUT); //для указателей поворота | провода от D11, D12, D13 (MOSI, MISO, SCK)
   pinMode(ledpin, OUTPUT);
-  digitalWrite(ledpin, LOW);//A3 светодиод
+  //digitalWrite(ledpin, LOW);//A3 светодиод
 
   analogPrescaler(128);//!!!ВНИМАНИЕ предделитель АЦП 128 - наивысшая точность
   analogReference(INTERNAL);//опорное напряжения для аналоговых измерений 1.1вольт
@@ -242,16 +245,17 @@ void loop() {
       if ((controlState && enc.right())) increment = 1;// если controlState == 0 управляем ПАРАМЕТРАМИ
       if ((controlState && enc.left())) increment = -1;
 
-      if (controlState && enc.fast() && (enc.getDir() == 1)) increment = FAST_STEP;//быстрый поворот и направление вправо
-      if (controlState && enc.fast() && (enc.getDir() == -1)) increment = -FAST_STEP;// влево
+      if (controlState && enc.fast() && (enc.dir() == 1)) increment = FAST_STEP;//быстрый поворот и направление вправо
+      if (controlState && enc.fast() && (enc.dir() == -1)) increment = -FAST_STEP;// влево
       vals[arrowPos] += increment;  // меняем параметры по позиции стрелки
       vals[0] = constrain(vals[0], 0, 7);//ограничиваем парметр яркости дисплея
-      vals[1] = constrain(vals[1], 0, vals[2]);//  minV   параметры int`овские - потом делятся на 10 и получаются float
+      vals[1] = constrain(vals[1], 0, vals[2]);//  minV   параметры int`овые - потом делятся на 10 и получаются float
       vals[2] = constrain(vals[2], vals[1], 999);//maxV
       vals[3] = constrain(vals[3], 0, 1);//пищалка указателей поворота
       vals[4] = constrain(vals[4], 0, 255);//параметр яркости светодиода
       vals[5] = constrain(vals[5], 0, 1);//параметр обнуления моточасов
       vals[6] = constrain(vals[6], 0, 800);//параметр максимальной температуры цилиндров
+      vals[7] = constrain(vals[7], 0, 1);//тест пищалки
       minV = float(vals[1]) / 10;//делим на 10, чтобы получить флоат с 1 знаком после точки
       maxV = float(vals[2]) / 10;
       if (vals[5] == 1) {//если равно единице обнуляем счётчик моточасов (покрутить энкодер)
@@ -259,9 +263,27 @@ void loop() {
         e_hours = 0;
         EEPROM.put(0, e_hours);
       }
-      analogWrite (ledpin, vals[4]);
       printGUI();
     }
+    if (vals[7] == 1) {//Тест пищалки
+#ifdef buzzPassive
+      tone (buzz, 2000);
+#endif
+
+#ifdef buzzActive
+      digitalWrite (buzz, HIGH);
+#endif
+    }
+    else {
+#ifdef buzzPassive
+      noTone (buzz);
+#endif
+
+#ifdef buzzActive
+      digitalWrite (buzz, LOW);
+#endif
+    }
+    analogWrite (ledpin, vals[4]);
   }
 
 
@@ -349,7 +371,15 @@ void loop() {
       lcd.setCursor(8, 1);
       lcd.print(F(" "));
     }
-    if (vals[3] == 1) digitalWrite (buzz, buzzState);//пищим если разрешено в настройках
+    if (vals[3]) {
+#ifdef buzzActive
+      digitalWrite (buzz, buzzState);//пищим если разрешено в настройках
+#endif
+#ifdef buzzPassive
+      if (buzzState) tone (buzz, 2000);
+      else noTone(buzz);
+#endif
+    }
   }
 
 
@@ -518,7 +548,7 @@ void isButtonSingle() { // действия после одиночного на
   disp.displayByte(0, _U);//выводим версию программы на дисплей
   disp.display(1, 2);
   disp.display(2, 4);
-  disp.display(3, 2);
+  disp.display(3, 3);
   lcd.clear();//очищаем дисплей для показа параметров
   while (millis() - myTimer5 < 3000) {
     lcd.setCursor(0, 0);
