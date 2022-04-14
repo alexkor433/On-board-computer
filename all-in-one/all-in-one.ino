@@ -15,7 +15,7 @@
 #define MAX6675_DELAY 10 //задержка переключения CLK в микросекундах (для улучшения связи по длинным проводам)
 #include <GyverMAX6675.h>
 #include <GyverTM1637.h>
-#include <GetVolt.h>
+#include <GetVolt.h>//библиотека для получения напряжения
 #include <GetCPUTemp.h>//пин А7 невозможно больше использовать
 #include <Tachometer.h>
 #define EB_BETTER_ENC  // улучшенный алгоритм опроса энкодера. Добавит 16 байт SRAM при подключении библиотеки
@@ -26,8 +26,8 @@
 
 //#define bufferBatt//включение обработки буферного аккумулятора
 //#define RPMwarning//включение предупреждения о высоких оборотах
-//#define buzzPassive
-#define buzzActive
+//#define buzzPassive //дефайнить, если пищалка пассивная
+#define buzzActive //дефайнить, если пищалка активная
 
 // Переменные, создаваемые процессом сборки,
 // когда компилируется скетч для показа свободной оперативки
@@ -60,11 +60,11 @@ const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B
 #define buttpin 13
 #define ledpin 3
 #define buzz 10//пин пищалки
-#define A 16 //A2
+#define A 16 //A2 пины энкодера
 #define B 17 //A3
 #define tempsizing 289.0 //калибровочное значение для измерения температуры процессора
 
-GetCPUTemp temperature (tempsizing);
+GetCPUTemp temperature (tempsizing); //прописывем конструктор с передачей калибровочного параметра для получения температуры процессора
 // указываем пины в порядке SCK SO CS
 GyverMAX6675<thermoSCK, thermoSO, thermoCS> thermo;
 GyverMAX6675<thermoSCK2, thermoSO2, thermoCS2> thermo2;
@@ -94,11 +94,11 @@ float input_volt = 0.0;
 float buff_input_volt = 0.0;
 
 uint32_t myTimer1, myTimer2, myTimer3, myTimer4, myTimer7, myTimer9, myTimer10;
-boolean z, j, bv, Hold, L, P;//z - для мигания текстом и светодиодом, j - для мигания светодиода при высоких оборотах,P - смотри на код меню
+boolean z, j, bv, Hold, L, P;//z - для мигания текстом и светодиодом, j - для мигания светодиода при высоких оборотах,P - смотреть на код меню
 boolean ledState = LOW;//bv - для показа напряжения буферного аккумулятора, Hold - в меню неастроек, L - обновление значений счётчика моточасов
-int t1, t2, R;
-float e_hours, maxV, minV;
-uint8_t m, h, p1, p2;
+int t1, t2, R; //t1, t2 - температура с термопар, R - для работы с RPM
+float e_hours, maxV, minV; //моточасы, максимальное и минимальное напряжение
+uint8_t m, h, p1, p2; //время поездки - минуты, часы; p1, p2 - динамическая размерность температуры
 
 /*для обработки энкодера и меню в LCD1602*/
 // названия параметров (max 12 букв)
@@ -111,16 +111,16 @@ const char name6[] PROGMEM = "MotorH-to-0";
 const char name7[] PROGMEM = "MaxCylTemp";
 const char name8[] PROGMEM = "Buzzer Test";
 
-// объявляем таблицу ссылок
+// объявляем таблицу ссылок на параметры
 const char* const names[] PROGMEM = {
   name1, name2, name3, name4, name5, name6, name7, name8
 };
 
-int vals[SETTINGS_AMOUNT];  // массив параметров
+int vals[SETTINGS_AMOUNT];  // массив параметров для сохранения настроек
 int8_t arrowPos = 0;
-bool controlState = 0;  // клик
+bool controlState = 0; //для изменения режима в меню
 
-#define cels &vars[0]//макросы параметров для передачи в функцию printFromPGM для уменьшения используемой оперативки
+#define cels &vars[0]//макросы параметров для передачи в функцию printFromPGM для уменьшения использованной оперативной памяти
 #define _t1 &vars[1]
 #define _t2 &vars[2]
 
@@ -137,7 +137,7 @@ void setup() {
   //!!!Обязательно размещается в начале setup, иначе уходит в bootloop!!!
   Watchdog.enable(RESET_MODE, WDT_PRESCALER_1024);//режим сброса при зависании, таймаут 8 сек.
   //Либо размещается в любом месте сетапа, но с условием отключения WDT в начале сэтапа функцией watchdog.disable()
-  //Это связано с тем, что контроллер автоматически ставит таймаут WDT на 16 мс и, если функция watchdog.enable() стоит не в начале, код до неё может
+  //Это связано с тем, что контроллер автоматически ставит таймаут WDT на 16 мс, и, если функция watchdog.enable() стоит не в начале, код до неё может
   //выполняться дольше 16 мс и контроллер уходит в bootloop, вернее WDT перезагружает контроллер каждые 16 мс. Может случиться, что даже если сбросили
   //таймер в начале сетапа, контроллер всё равно уходит в bootloop, тогда необходимо перепрошить загрузчик или убрать его совсем.
 
@@ -180,7 +180,7 @@ void setup() {
   disp.twist(ON, 30);//анимация при включении
   delay(200);//стабилизация max6675 (время конверсии чипа - 170-220 мс)
   disp.clear();
-  //float(+4) необходимо очистить значения в каждом адресе памяти, затем убрать или закомментировать
+  //float(+4) необходимо очистить значения в каждом адресе памяти, затем этот код убрать или закомментировать
   //  for (int i = 0; i < sizeof(vals) + 4 ; i++) {
   //    EEPROM.put (i, 0);
   //  }
@@ -190,7 +190,7 @@ void setup() {
 
 
 void sens() {
-  tacho.tick(); //в прерывании вазываем tick для обработки RPM
+  tacho.tick(); //в прерывании вазываем tick для обработки RPM (Библиотека Tachometer)
 }
 
 
@@ -216,6 +216,7 @@ void loop() {
   }
 
   if (Hold) { //Hold == true
+    // P - флаг для однократного получения параметров при входе в меню
     if (P) {//получили переменные 1 раз
       EEPROM.get(4, vals);
       P = false;//получили.
