@@ -7,7 +7,7 @@
 //производятся через меню бортового компьютера.
 //Можно искать настройки по тексту программы через Ctrl + F
 
-//Version 2.4.4
+//Version 2.4.5
 #include <EEPROM.h>
 #include <GyverWDT.h> //библиотека сторожевого таймера
 #include <Wire.h>
@@ -323,7 +323,7 @@ void loop() {
     sec2 = millis();
     e_h = (float(sec2 - sec1) / 3600); //читаем разницу настоящего значения и предыдущего в миллисекундах и преобразуем в десятичные часы
     EEPROM.get(0, e_hours);//читаем из памяти и прибавляем
-    e_hours += e_h / 1000; //делаем вычисления и значение e_hours получается десятичное, т.е. float
+    e_hours += e_h / 1000; //делаем вычисления и значение e_hours получается десятичное, т.е. float с 1 знаком после запятой
     EEPROM.put(0, e_hours);
     sec1 = sec2;
   }
@@ -345,9 +345,9 @@ void loop() {
         ledState = LOW;//выключаем по таймеру
         buzzState = LOW;
         digitalWrite(ledpin, ledState);
+        lcd.setCursor(9, 1);
+        lcd.print(F(" "));
       }
-      lcd.setCursor(9, 1);
-      lcd.print(F(" "));
     }
 
     if (digitalRead(turnpin2) == HIGH) {
@@ -363,9 +363,9 @@ void loop() {
         ledState = LOW;
         buzzState = LOW;
         digitalWrite(ledpin, ledState);
+        lcd.setCursor(8, 1);
+        lcd.print(F(" "));
       }
-      lcd.setCursor(8, 1);
-      lcd.print(F(" "));
     }
     if (vals[3]) {
 #ifdef buzzActive
@@ -393,16 +393,21 @@ void loop() {
 
 
   if (!Hold) {
+    static bool flag; //флаг для однократной очистки дисплея, если выводились какие-либо строки
     lcd.setCursor(8, 0);
     if (t1 > vals[6] || t2 > vals[6]) {
       switch (z) {
         case 1:
           lcd.print(F("OVERheat"));
+          flag = true;
           break;
         case 0:
           if (input_volt < minV) lcd.print(F("LOWvolt "));
           else if (input_volt > maxV) lcd.print(F("OVERvolt"));
-          else lcd.print(F("        "));
+          else if (flag) {
+            lcd.print(F("        "));
+            flag = false;
+          }
           break;
       }
     }
@@ -410,9 +415,13 @@ void loop() {
       switch (z) {
         case 1:
           lcd.print(F("LOWvolt"));
+          flag = true;
           break;
         case 0:
-          lcd.print(F("        "));
+          if (flag) {
+            lcd.print(F("        "));
+            flag = false;
+          }
           break;
       }
     }
@@ -420,14 +429,24 @@ void loop() {
       switch (z) {
         case 1:
           lcd.print(F("OVERvolt"));
+          flag = true;
           break;
         case 0:
-          lcd.print(F("        "));
+          if (flag) {
+            lcd.print(F("        "));
+            flag = false;
+          }
           break;
       }
     }
-    else if (R < 500) lcd.print(F("  Hello "));
-    else lcd.print(F("        "));
+    else if (R < 500) {
+      lcd.print(F("  Hello "));
+      flag = true;
+    }
+    else if (flag) {
+      lcd.print(F("        "));
+      flag = false;
+    }
   }
 
   /*--управление светодиодом--*/
@@ -491,9 +510,11 @@ void loop() {
       lcd.setCursor(3, 0);
       lcd.print(t1);
       printFromPGM(cels);//символ градуса
+      if (t1 < 100) lcd.print(F(" "));
       lcd.setCursor(3, 1);
       lcd.print(t2);
       printFromPGM(cels);//символ градуса
+      if (t2 < 100) lcd.print(F(" "));
 #ifdef bufferBatt
       if (buff_input_volt >= minV) {
 #endif
@@ -524,7 +545,7 @@ void isButtonSingle() { // действия после одиночного на
   disp.displayByte(0, _U);//выводим версию программы на дисплей
   disp.display(1, 2);
   disp.display(2, 4);
-  disp.display(3, 4);
+  disp.display(3, 5);
   lcd.setCursor(0, 1);
   lcd.print("                ");
   lcd.setCursor(0, 0);
