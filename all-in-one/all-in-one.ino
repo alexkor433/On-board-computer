@@ -1,5 +1,5 @@
 //версия для бортового компьютера на плате
-//Настройки: энкодер (EB_BETTER_ENC (установлен по умолчанию с версии 2.0), EB_HALFSTEP_ENC, EB_FAST, buttpin, A, B (пины энкодера)),
+//Настройки: энкодер (EB_BETTER_ENC (установлен по умолчанию с версии 2.0 библиотеки), EB_HALFSTEP_ENC, EB_FAST, buttpin, A, B (пины энкодера)),
 //указатели поворота (turnpin1, turnpin2), TM1637 (CLK, DIO), аналоговые преобразования (analogpin1, analogpin2, сопротивление резисторов r1, r2,
 //r3, r4 в делителе напряжения, калибровка calibration1, calibration2), калибровка температуры процессора (tempsizing), пин пищалки (buzz),
 //LiquidCrystal_I2C (настройка адреса), MAX6675_DELAY (задержка переключения CLK в микросекундах для улучшения связи по длинным проводам),
@@ -7,12 +7,12 @@
 //производятся через меню бортового компьютера.
 //Можно искать настройки по тексту программы через Ctrl + F
 
-#pragma message "Version 2.7.0"
+#pragma message "Version 2.8.0"
 #include <EEPROM.h>
 #include <GyverWDT.h> //библиотека сторожевого таймера
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#define MAX6675_DELAY 10 //задержка переключения CLK в микросекундах (для улучшения связи по длинным проводам)
+#define MAX6675_DELAY 20 //задержка переключения CLK в микросекундах (для улучшения связи по длинным проводам)
 #include <GyverMAX6675.h>
 #include <GyverTM1637.h>
 #include <GetVolt.h>//библиотека для получения напряжения
@@ -99,8 +99,9 @@ boolean z, j, Hold, L, P; //z - для мигания текстом и свет
 boolean ledState = LOW;//Hold - в меню неастроек, L - обновление значений счётчика моточасов
 int t1, t2, R; //t1, t2 - температура с термопар, R - для работы с RPM
 float e_hours, maxV, minV; //моточасы, максимальное и минимальное напряжение
-uint8_t m, h, bv; //время поездки - минуты, часы, bv - для показа напряжения буферного аккумулятора;
+uint8_t bv; //bv - для показа напряжения буферного аккумулятора;
 uint32_t myTimer4;
+volatile uint8_t m, h;//время поездки - минуты, часы объявляем volatile, т.к. обрабатываются прерыванием
 
 /*для обработки энкодера и меню в LCD1602*/
 // названия параметров (max 12 букв)
@@ -135,7 +136,7 @@ uint16_t memoryFree();
 
 void setup() {
   //!!!Обязательно размещается в начале setup, иначе уходит в bootloop!!!
-  Watchdog.enable(RESET_MODE, WDT_PRESCALER_1024);//режим сброса при зависании, таймаут 8 сек.
+  Watchdog.enable(RESET_MODE, WDT_PRESCALER_512);//режим сброса при зависании, таймаут 4 сек.
   //Либо размещается в любом месте сетапа, но с условием отключения WDT в начале сэтапа функцией watchdog.disable()
   //Это связано с тем, что контроллер автоматически ставит таймаут WDT на 16 мс, и, если функция watchdog.enable() стоит не в начале, код до неё может
   //выполняться дольше 16 мс и контроллер уходит в bootloop, вернее WDT перезагружает контроллер каждые 16 мс. Может случиться, что даже, если сбросили
@@ -158,7 +159,7 @@ void setup() {
   //Если перенастроить 0 таймер, не будут работать delay(), millis(), micros() и т.д.
   //На 1 таймере может некорректно работать ШИМ на 9 и 10 пинах, а также библиотека Servo!
   //На 2 таймере отключится tone()
-  Timer1.setPeriod(1000000);//устанавливем период для счёта времени в  мкс с момента включения м-к (1 секунда)
+  Timer1.setPeriod(1000000);//устанавливем период для счёта времени в мкс с момента включения м-к (1 секунда)
   Timer1.enableISR();//с этого момента начнётся счёт
 
   lcd.createChar(1, degree);// Загружаем массив с символом градуса «°» в 1 ячейку ОЗУ дисплея
@@ -170,11 +171,9 @@ void setup() {
   //Поэтому можно использовать макрос в разных участках программы, одинаковые строки не нужно выносить глобально и делать их общими – это сделает компилятор
   lcd.backlight();//подсветка lcd1602
   lcd.home();
-  lcd.print(F("t1=  "));
-  lcd.print(F("\1C"));
+  lcd.print(F("tL=  \1C"));
   lcd.setCursor(0, 1);
-  lcd.print(F("t2=  "));
-  lcd.print(F("\1C"));
+  lcd.print(F("tR=  \1C"));
   lcd.setCursor(10, 1);
   lcd.print(char(4)); //левая часть значка аккумулятора
   lcd.print(char(5));// правая часть
@@ -212,7 +211,7 @@ void loop() {
   /*--обработка энкодера с кнопкой--*/
   enc.tick();// обработчик энкодера с кнопкой
 
-  if (enc.held()) {
+  if (enc.held()) {//смена режимов показа на дисплее
     P = true;//меняем флаг для однократного чтения из EEPROM при запуске настроек
     Hold = !Hold; //переключаем в режим настройки
     digitalWrite (ledpin, LOW);
@@ -341,10 +340,10 @@ void loop() {
             noTone(buzz);
 #endif
           }
-          digitalWrite(ledpin, LOW);
+          digitalWrite(ledpin, LOW);//выключаем светодиод
           if (ls) lcd.setCursor(8, 1);
           else lcd.setCursor(9, 1);
-          lcd.print(F(" "));
+          lcd.print(F(" "));//выыключаем нужную стрелку
         }
 
         /* --вывод ошибок и неисправностей-- */
@@ -360,7 +359,7 @@ void loop() {
 
         static bool flag; //флаг для однократной очистки дисплея, если выводились какие-либо строки
         lcd.setCursor(8, 0);
-        if (t1 > vals[6] || t2 > vals[6]) {
+        if (t1 > vals[6] || t2 > vals[6]) {//если температура больше заданной
           switch (z) {
             case 1:
               lcd.print(F("OVERheat"));
@@ -558,12 +557,12 @@ void thermocouple() {
 /*--выводим версию программы, напряжение буферного аккумулятора (если есть) и время поездки--*/
 void isButtonSingle() { // действия после одиночного нажатия кнопки
   uint32_t myTimer = millis();
-  disp.displayByte(_U, _2, _7, _0);//выводим версию программы на дисплей
+  disp.displayByte(_U, _2, _8, _0);//выводим версию программы на дисплей
   lcd.clear();//очищаем дисплей для показа параметров
-
-  while (millis() - myTimer < 3000) {
+  Watchdog.reset();//сбрасываем таймер перед циклом
+  while (millis() - myTimer < 3650) {
     lcd.home();
-    lcd.print(F("trip time: "));
+    lcd.print(F("Elapsed T: "));
     lcd.print(h);
     lcd.print(F(":"));
     lcd.print(m);
@@ -584,7 +583,8 @@ void isButtonDouble() { // действия после двойного нажа
   lcd.clear();//очищаем дисплей для показа параметров
   float CPUt = temperature.getCPUTemp();
   EEPROM.get(0, e_hours); //читаем значение моточасов из памяти
-  while (millis() - myTimer < 5000) { //время не должно быть больше периода Watchdog
+  Watchdog.reset();//сбрасываем таймер перед циклом
+  while (millis() - myTimer < 3650) { //время не должно быть больше периода Watchdog
     lcd.home();
     lcd.print(F("motor hours:"));
     lcd.print(e_hours);
@@ -599,11 +599,11 @@ void isButtonDouble() { // действия после двойного нажа
 
 void lcdUpdate() { //обновляем экран на LCD
   lcd.clear();//очищаем дисплей для показа параметров
-  lcd.print(F("t1="));
+  lcd.print(F("tL="));
   lcd.print(t1);
   lcd.print(F("\1C"));//символ градуса
   lcd.setCursor(0, 1);
-  lcd.print(F("t2="));
+  lcd.print(F("tR="));
   lcd.print(t2);
   lcd.print(F("\1C"));//символ градуса
   lcd.setCursor(10, 1);
