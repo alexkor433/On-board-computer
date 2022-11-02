@@ -37,7 +37,7 @@
 //r3, r4 в делителе напряжения, калибровка calibration1, calibration2), калибровка температуры процессора (tempsizing), пин пищалки (buzz),
 //LiquidCrystal_I2C (настройка адреса), MAX6675_DELAY (задержка переключения CLK в микросекундах для улучшения связи по длинным проводам),
 //настройка меню (SETTINGS_AMOUNT, FAST_STEP), настройки препроцессором (bufferBatt, RPMwarning, buzzPassive, buzzActive, OneCylinder, TwoCylinders).
-```cpp
+```
 ## Версии
 `старые версии находятся в LOG-versions.md. Они не предназначены для системы на плате`
 
