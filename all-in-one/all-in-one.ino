@@ -7,7 +7,7 @@
 //производятся через меню бортового компьютера.
 //Можно искать настройки по тексту программы через Ctrl + F
 
-#pragma message "Version 2.8.0"
+#pragma message "Version 2.8.1"
 #include <EEPROM.h>
 #include <GyverWDT.h> //библиотека сторожевого таймера
 #include <Wire.h>
@@ -23,12 +23,14 @@
 #include <EncButton.h>
 #include <GyverTimers.h>//бибилиотека для управления системными таймерами
 
+ /*--Предустановки--*/
 //#define bufferBatt//включение обработки буферного аккумулятора
 //#define RPMwarning//включение предупреждения о высоких оборотах
 //#define buzzPassive //дефайнить, если пищалка пассивная
 #define buzzActive //дефайнить, если пищалка активная
+ /*--            --*/
 
-#ifdef buzzPassive && buzzActive //нельзя одновременно дефайнить buzzActive и buzzPassive
+#if defined buzzPassive && defined buzzActive //нельзя одновременно дефайнить buzzActive и buzzPassive
 #error "incompatible definitions buzzActive & buzzPassive"
 #endif
 // Переменные, создаваемые процессом сборки,
@@ -75,7 +77,7 @@ GyverTM1637 disp(CLK, DIO);
 Tachometer tacho;
 /*для меню настроек:*/
 #define LINES 2       // количество строк дисплея
-#define SETTINGS_AMOUNT 8  // количество настроек
+#define SETTINGS_AMOUNT 8  // количество настроек (16 ячеек EEPROM int)
 #define FAST_STEP 10   // скорость изменения при быстром повороте
 
 EncButton<EB_TICK, A, B, buttpin> enc;   // энкодер с кнопкой <A, B, KEY> (A, B, KEY - номера пинов)
@@ -223,6 +225,7 @@ void loop() {
   }
 
   switch (Hold) {
+    /* --обработка в режиме настроек-- */
     case 1: {//Hold == true
         // P - флаг для однократного получения параметров при входе в меню
         if (P) {//получили переменные 1 раз
@@ -233,7 +236,7 @@ void loop() {
         if (enc.click()) {
           controlState = !controlState; // изменяем состояние контроля из 0 в 1
           if (!controlState)//если controlState не в режиме настроек (на выходе из него изменился на режим прокрутки в прошлой строчке)
-            EEPROM.put(4, vals);//при клике и переходе из режима настроек
+            EEPROM.put(4, vals);//запись массива в 4 ячейку памяти //при клике и переходе из режима настроек
 
           printGUI(); //печатаем на дисплее (названия настроек)
         }
@@ -269,7 +272,7 @@ void loop() {
           maxV = float(vals[2]) / 10;
           if (vals[5]) {//если равно единице обнуляем счётчик моточасов (покрутить энкодер)
             e_hours = 0;
-            EEPROM.put(0, e_hours);
+            EEPROM.put(0, e_hours);//запись моточасов в нулевую ячейку памяти
             vals[5] = 0;
           }
           printGUI();
@@ -412,7 +415,7 @@ void loop() {
           flag = false;
         }
 
-        /*--вывод информации о буферном аккумуляторе--*/
+        /* --вывод информации о буферном аккумуляторе-- */
 #ifdef bufferBatt
         if (buff_input_volt < minV) {
           switch (bv) {
@@ -439,7 +442,7 @@ void loop() {
         }
 #endif
 
-        /*--управление светодиодом--*/
+        /* --управление светодиодом-- */
         static bool le;
         if ((millis() - myTimer4 > 1200) && ((t1 > vals[6]) ||  (t2 > vals[6]) || (input_volt < minV) || (input_volt > maxV))) {
           //управляем светодиодом если прошло больше секунды с момента включения указателей поворота
@@ -461,7 +464,7 @@ void loop() {
           le = false;
         }
 
-        /*--если кол-во оборотов больше 5800, то включать, выключать светодиод--*/
+        /* --если кол-во оборотов больше 5800, то включать, выключать светодиод-- */
 #ifdef RPMwarning
         if ((millis() - myTimer4 > 1200) && R >= 5800) {
           static uint16_t myTimer;
@@ -511,7 +514,7 @@ void loop() {
     sec1 = sec2;//запоминаем время для следующей итерации
   }
 
-  /*--вывод информации на дисплей--*/
+  /* --вывод информации на дисплей-- */
   static uint16_t myTimer1;
   uint16_t ms1 = millis() & 0xFFFF;
   if (ms1 - myTimer1 >= 1000) {
@@ -545,7 +548,7 @@ void loop() {
   }
 }
 
-
+/* --получение температуры термопар-- */
 void thermocouple() {
   if (thermo.readTemp()) t1 = thermo.getTempInt() - 2;
   else t1 = NAN;
@@ -554,10 +557,10 @@ void thermocouple() {
 }
 
 
-/*--выводим версию программы, напряжение буферного аккумулятора (если есть) и время поездки--*/
+/* --выводим версию программы, напряжение буферного аккумулятора (если есть) и время поездки-- */
 void isButtonSingle() { // действия после одиночного нажатия кнопки
   uint32_t myTimer = millis();
-  disp.displayByte(_U, _2, _8, _0);//выводим версию программы на дисплей
+  disp.displayByte(_U, _2, _8, _1);//выводим версию программы на дисплей
   lcd.clear();//очищаем дисплей для показа параметров
   Watchdog.reset();//сбрасываем таймер перед циклом
   while (millis() - myTimer < 3650) {
@@ -576,7 +579,7 @@ void isButtonSingle() { // действия после одиночного на
   disp.clear();
 }
 
-/*--выводим температуру процессора и моточасы--*/
+/* --выводим температуру процессора и моточасы-- */
 void isButtonDouble() { // действия после двойного нажатия кнопки
   uint32_t myTimer = millis();
   disp.displayInt(memoryFree());
@@ -596,7 +599,7 @@ void isButtonDouble() { // действия после двойного нажа
   disp.clear();
 }
 
-
+/* --обновление LCD при переходе на другие экраны-- */
 void lcdUpdate() { //обновляем экран на LCD
   lcd.clear();//очищаем дисплей для показа параметров
   lcd.print(F("tL="));
@@ -611,7 +614,7 @@ void lcdUpdate() { //обновляем экран на LCD
   lcd.print(char(5));// правая половина
 }
 
-
+/* --печать интерфейса в меню настроек-- */
 void printGUI() {
   static int8_t screenPos = 0; // номер "экрана"
   static int8_t lastScreen = 0; // предыдущий номер "экрана"
