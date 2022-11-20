@@ -7,7 +7,7 @@
 // Остальные настройки производятся через меню бортового компьютера.
 // Можно искать настройки по тексту программы через Ctrl + F
 
-#pragma message "Version 2.9.1"
+#pragma message "Version 2.9.2"
 #include <EEPROM.h>
 #include <GyverWDT.h> // библиотека сторожевого таймера
 #include <Wire.h>
@@ -16,7 +16,7 @@
 #include <GyverMAX6675.h>
 #include <GyverTM1637.h>
 #include <GetVolt.h>// библиотека для получения напряжения
-#include <GetCPUTemp.h>// пин А7 невозможно больше использовать
+#include <CPUTemperature.h>// пин А7 невозможно больше использовать
 #include <Tachometer.h>
 #define EB_HALFSTEP_ENC // режим для полушаговых энкодеров
 #define EB_FAST 65     // таймаут быстрого поворота, мс
@@ -90,7 +90,8 @@ const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B
 #define A 16 // A2 пины энкодера
 #define B 17 // A3
 
-#define tempsizing 289.0 // калибровочное значение для измерения температуры процессора
+#define tempsizing 296.7 // калибровочное значение для измерения температуры процессора
+#define tempGain 0.98
 
 /*для меню настроек*/
 #define LINES 2       // количество строк дисплея
@@ -101,7 +102,7 @@ const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B
 #endif
 #define FAST_STEP 10   // скорость изменения при быстром повороте
 
-GetCPUTemp temperature (tempsizing); // прописывем конструктор с передачей калибровочного параметра для получения температуры процессора
+CPUTemperature temperature(tempsizing, tempGain); // прописывем конструктор с передачей калибровочных параметров для получения температуры процессора
 // указываем пины в порядке SCK SO CS
 GyverMAX6675<thermoSCK, thermoSO, thermoCS> thermo;
 #ifdef TwoCylinders
@@ -314,33 +315,64 @@ void loop() {
           vals[arrowPos] += increment;  // меняем параметры по позиции стрелки
 #if defined withPiezo // для системы с пьезоэлементом
 
-          vals[0] = constrain(vals[0], 0, 7);//ограничиваем парметр яркости дисплея
-          vals[1] = constrain(vals[1], 0, vals[2]);//  minV   параметры int - потом делятся на 10 и получаются float
-          vals[2] = constrain(vals[2], vals[1], 999);//maxV
-          vals[3] = constrain(vals[3], 0, 1);// пищалка указателей поворота
-          vals[4] = constrain(vals[4], 0, 255);// параметр яркости светодиода
-          vals[6] = constrain(vals[6], 0, 800);// параметр максимальной температуры цилиндров
-          vals[7] = constrain(vals[7], 0, 1);// тест пищалки
-
-          if (vals[5]) {// если равно единице обнуляем счётчик моточасов (покрутить энкодер)
-            vals[5] = 0;// параметр обнуления моточасов
-            e_hours = 0;
-            EEPROM.put(0, e_hours);// запись моточасов в нулевую ячейку памяти
-
+          switch (arrowPos) {// ограничиваем только изменённые настройки
+            case 0:
+              vals[0] = constrain(vals[0], 0, 7);//ограничиваем парметр яркости дисплея
+              break;
+            case 1:
+              vals[1] = constrain(vals[1], 0, vals[2]);//  minV   параметры int - потом делятся на 10 и получаются float
+              break;
+            case 2:
+              vals[2] = constrain(vals[2], vals[1], 999);//maxV
+              break;
+            case 3:
+              vals[3] = constrain(vals[3], 0, 1);// пищалка указателей поворота
+              break;
+            case 4:
+              vals[4] = constrain(vals[4], 0, 255);// параметр яркости светодиода
+              break;
+            case 5:
+              if (vals[5]) {// если равно единице обнуляем счётчик моточасов (покрутить энкодер)
+                vals[5] = 0;// параметр обнуления моточасов
+                e_hours = 0;
+                EEPROM.put(0, e_hours);// запись моточасов в нулевую ячейку памяти
+              }
+              break;
+            case 6:
+              vals[6] = constrain(vals[6], 0, 800);// параметр максимальной температуры цилиндров
+              break;
+            case 7:
+              vals[7] = constrain(vals[7], 0, 1);// тест пищалки
+              break;
           }
+
 #elif defined noPiezo// для системы БЕЗ пьезоэлемента:
 
-          vals[0] = constrain(vals[0], 0, 7);// ограничиваем парметр яркости дисплея
-          vals[1] = constrain(vals[1], 0, vals[2]);//  minV
-          vals[2] = constrain(vals[2], vals[1], 999);//maxV
-          vals[3] = constrain(vals[3], 0, 255);// параметр яркости светодиода
-          vals[5] = constrain(vals[5], 0, 800);// параметр максимальной температуры цилиндров
-
-          if (vals[4]) {
-            vals[4] = 0;
-            e_hours = 0;
-            EEPROM.put(0, e_hours);
+          switch (arrowPos) {
+            case 0:
+              vals[0] = constrain(vals[0], 0, 7);// ограничиваем парметр яркости дисплея
+              break;
+            case 1:
+              vals[1] = constrain(vals[1], 0, vals[2]);//  minV
+              break;
+            case 2:
+              vals[2] = constrain(vals[2], vals[1], 999);//maxV
+              break;
+            case 3:
+              vals[3] = constrain(vals[3], 0, 255);// параметр яркости светодиода
+              break;
+            case 4:
+              if (vals[4]) {
+                vals[4] = 0;
+                e_hours = 0;
+                EEPROM.put(0, e_hours);
+              }
+              break;
+            case 5:
+              vals[5] = constrain(vals[5], 0, 800);// параметр максимальной температуры цилиндров
+              break;
           }
+
 #endif
           printGUI();
         }
@@ -608,7 +640,11 @@ void loop() {
   uint16_t ms2 = millis() & 0xFFFF;// остаток от деления битовой маской
   if (ms2 - myTimer2 >= 100) {
     myTimer2 = ms2;
+#if defined TwoCylinders
     if (!Hold) disp.displayInt(R = tacho.getRPM() >> 1);// делим на 2
+#elif defined OneCylinder
+    if (!Hold) disp.displayInt(R = tacho.getRPM());
+#endif
     /* --обработка вольтметра-- */
     input_volt = firstbatt.getVolt(analogRead(analogpin1));// передаём параметры в функцию получения напряжения
 #ifdef bufferBatt
@@ -683,7 +719,8 @@ void thermocouple() {
 /* --выводим версию программы, напряжение буферного аккумулятора (если есть) и время поездки-- */
 void isButtonSingle() { // действия после одиночного нажатия кнопки
   uint32_t myTimer = millis();
-  disp.displayByte(_U, _2, _9, _1);// выводим версию программы на дисплей
+  digitalWrite(ledpin, LOW);
+  disp.displayByte(_U, _2, _9, _2);// выводим версию программы на дисплей
   lcd.clear();
   Watchdog.reset();// сбрасываем таймер перед циклом
   while (millis() - myTimer < 3650) {
@@ -705,6 +742,7 @@ void isButtonSingle() { // действия после одиночного на
 /* --выводим температуру процессора и моточасы-- */
 void isButtonDouble() { // действия после двойного нажатия кнопки
   uint32_t myTimer = millis();
+  digitalWrite(ledpin, LOW);
   disp.displayInt(memoryFree());
   lcd.clear();
   float CPUt = temperature.getCPUTemp();
