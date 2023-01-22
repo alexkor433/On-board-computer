@@ -7,7 +7,7 @@
 // Остальные настройки производятся через меню бортового компьютера.
 // Можно искать настройки по тексту программы через Ctrl + F
 
-#pragma message "Version 2.9.2"
+#pragma message "Version 2.9.3.1"
 #include <EEPROM.h>
 #include <GyverWDT.h> // библиотека сторожевого таймера
 #include <Wire.h>
@@ -90,8 +90,8 @@ const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B
 #define A 16 // A2 пины энкодера
 #define B 17 // A3
 
-#define tempsizing 296.7 // калибровочное значение для измерения температуры процессора
-#define tempGain 0.98
+#define tempsizing 296.89 // калибровочное значение для измерения температуры процессора
+#define tempGain 0.94
 
 /*для меню настроек*/
 #define LINES 2       // количество строк дисплея
@@ -176,6 +176,7 @@ void printGUI();
 void printFromPGM(int charMap);
 void smartArrow(bool state1);
 uint16_t memoryFree();
+byte getBrightCRT(byte val);
 
 void setup() {
   // !!!Обязательно размещается в начале setup, иначе уходит в bootloop!!!
@@ -193,7 +194,7 @@ void setup() {
   pinMode(buzz, OUTPUT);
 #endif
 
-  analogPrescaler(128);// !!!ВНИМАНИЕ предделитель АЦП 128 - наивысшая точность (при использовании GyverCore)
+  //  analogPrescaler(128);// !!!ВНИМАНИЕ предделитель АЦП 128 - наивысшая точность (при использовании GyverCore)
   analogReference(INTERNAL);// опорное напряжения для аналоговых измерений 1.1вольт
   attachInterrupt(0, sens, FALLING); // прерывание на 2 пин(2пин-0, 3пин-1)
   tacho.setWindow(5);// установка количества тиков для счёта времени (по умолч 10)
@@ -262,15 +263,15 @@ void loop() {
   static bool P;
   // смена режимов показа на дисплее
   if (enc.held()) {
-    P = true;// меняем флаг для однократного чтения из EEPROM при запуске настроек
-    Hold = !Hold; // переключаем в режим настройки
+    Hold = !Hold;
     digitalWrite (ledpin, LOW);
     if (!Hold) {
       minV = float(vals[1]) / 10.0;// делим на 10, чтобы получить флоат с 1 знаком после точки
       maxV = float(vals[2]) / 10.0;
       lcdUpdate();//Hold == 0, очищаем дисплей
     }
-    else {
+    else { // при переходе в режим настройки
+      P = true;// меняем флаг для однократного чтения из EEPROM при запуске настроек
       lcd.clear();
       printGUI();// выводим интерфейс меню
     }
@@ -392,11 +393,13 @@ void loop() {
           digitalWrite (buzz, LOW);
 # endif
         }
-        analogWrite (ledpin, vals[4]);
+
+        analogWrite (ledpin, getBrightCRT(vals[4]));
 #elif defined noPiezo
-        analogWrite (ledpin, vals[3]);
+        analogWrite (ledpin, getBrightCRT(vals[3]));
 #endif
       }
+
       break; //!конец switch-case: 1!
 
 
@@ -454,8 +457,8 @@ void loop() {
 
         /* --вывод ошибок и неисправностей-- */
         static uint16_t myTimer3;
-        uint16_t ms3 = millis() & 0xFFFF;// берём из миллис остаток от деления битовой маской (0xFF - 1 байт (255), 0xFFFF - 2 байта (65 535))>
-        if (ms3 - myTimer3 >= 1500) { // для мигания текстом LCD 1602 || > т.е. не больше, чем 1 или 2 байта в зависимости от периода
+        uint16_t ms3 = (uint16_t)millis();
+        if (ms3 - myTimer3 >= 1500) { // для мигания текстом LCD 1602
           myTimer3 = ms3;
           z = !z;
 #if defined bufferBatt && defined TwoCylinders
@@ -614,7 +617,7 @@ void loop() {
 #ifdef RPMwarning
         if (R >= 5800 && (millis() - myTimer4 > 1200)) {
           static uint16_t myTimer;
-          uint16_t ms = millis() & 0xFFFF;
+          uint16_t ms = (uint16_t)millis();
           if (ms - myTimer >= 400) {
             myTimer = ms;
             j = !j;
@@ -631,17 +634,17 @@ void loop() {
         }
 #endif
       }
-      break; // !Конец switch-case: 0!
+      break; //!Конец switch-case: 0!
   }
 
 
   /* --вывод значения тахометра и получение напряжения-- */
   static uint16_t myTimer2;
-  uint16_t ms2 = millis() & 0xFFFF;// остаток от деления битовой маской
-  if (ms2 - myTimer2 >= 100) {
+  uint16_t ms2 = (uint16_t)millis();
+  if (ms2 - myTimer2 > 100) {
     myTimer2 = ms2;
 #if defined TwoCylinders
-    if (!Hold) disp.displayInt(R = tacho.getRPM() >> 1);// делим на 2
+    if (!Hold) disp.displayInt(R = (tacho.getRPM() >> 1));// делим на 2
 #elif defined OneCylinder
     if (!Hold) disp.displayInt(R = tacho.getRPM());
 #endif
@@ -667,7 +670,7 @@ void loop() {
 
   /* --вывод информации на дисплей-- */
   static uint16_t myTimer1;
-  uint16_t ms1 = millis() & 0xFFFF;
+  uint16_t ms1 = (uint16_t)millis();
   if (ms1 - myTimer1 >= 1000) {
     myTimer1 = ms1;
     Watchdog.reset();// защита от зависания - сбрасываем таймер Watchdog раз в секунду
@@ -720,7 +723,7 @@ void thermocouple() {
 void isButtonSingle() { // действия после одиночного нажатия кнопки
   uint32_t myTimer = millis();
   digitalWrite(ledpin, LOW);
-  disp.displayByte(_U, _2, _9, _2);// выводим версию программы на дисплей
+  disp.displayByte(_U, _2, _9, _3);// выводим версию программы на дисплей
   lcd.clear();
   Watchdog.reset();// сбрасываем таймер перед циклом
   while (millis() - myTimer < 3650) {
@@ -834,4 +837,8 @@ uint16_t memoryFree() {// функция вывода свободной опе�
   else
     freeValue = ((uint16_t)&freeValue) - ((uint16_t)__brkval);
   return freeValue;
+}
+
+byte getBrightCRT(byte val) { // коррекция яркости светодиода CRT кубической параболой
+  return ((long)val * val * val + 130305) >> 16;
 }
