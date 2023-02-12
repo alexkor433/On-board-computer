@@ -1,36 +1,36 @@
-// версия для бортового компьютера на плате
-// Настройки: энкодер (EB_BETTER_ENC (установлен по умолчанию с версии 2.0 библиотеки), EB_HALFSTEP_ENC, EB_FAST, keypin, A, B (пины энкодера)),
-// указатели поворота (turnpin1, turnpin2), TM1637 (CLK, DIO), аналоговые преобразования (analogpin1, analogpin2, сопротивление резисторов r1, r2,
-// r3, r4 в делителе напряжения, калибровка calibration1, calibration2), калибровка температуры процессора (tempsizing), пин пищалки (buzz),
-// LiquidCrystal_I2C (настройка адреса), MAX6675_DELAY (задержка переключения CLK в микросекундах для улучшения связи по длинным проводам),
-// настройка меню (SETTINGS_AMOUNT, FAST_STEP), настройки препроцессором (bufferBatt, RPMwarning, buzzPassive, buzzActive, OneCylinder, TwoCylinders).
-// Остальные настройки производятся через меню бортового компьютера.
-// Можно искать настройки по тексту программы через Ctrl + F
+/*версия для бортового компьютера на плате
+  Настройки: энкодер (EB_BETTER_ENC (установлен по умолчанию с версии 2.0 библиотеки), EB_HALFSTEP_ENC, EB_FAST, keypin, A, B (пины энкодера)),
+  указатели поворота (turnpin1, turnpin2), TM1637 (CLK, DIO), аналоговые преобразования (analogpin1, analogpin2, сопротивление резисторов r1, r2,
+  r3, r4 в делителе напряжения, калибровка calibration1, calibration2), калибровка температуры процессора (tempsizing), пин пищалки (buzz),
+  LiquidCrystal_I2C (настройка адреса), MAX6675_DELAY (задержка переключения CLK в микросекундах для улучшения связи по длинным проводам),
+  настройка меню (SETTINGS_AMOUNT, FAST_STEP), настройки препроцессором (bufferBatt, RPMwarning, buzzPassive, buzzActive, OneCylinder, TwoCylinders,
+  switchonanimation). Остальные настройки производятся через меню бортового компьютера.
+  Можно искать настройки по тексту программы через Ctrl + F*/
 
-#pragma message "Version 2.9.3.1"
+#pragma message "Version 2.9.4.2"
 #include <EEPROM.h>
 #include <GyverWDT.h> // библиотека сторожевого таймера
-#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#define MAX6675_DELAY 20 // задержка переключения CLK в микросекундах (для улучшения связи по длинным проводам)
+#define MAX6675_DELAY 15 // задержка переключения CLK в микросекундах (для улучшения связи по длинным проводам)
 #include <GyverMAX6675.h>
 #include <GyverTM1637.h>
 #include <GetVolt.h>// библиотека для получения напряжения
 #include <CPUTemperature.h>// пин А7 невозможно больше использовать
 #include <Tachometer.h>
 #define EB_HALFSTEP_ENC // режим для полушаговых энкодеров
-#define EB_FAST 65     // таймаут быстрого поворота, мс
+#define EB_FAST 60      // таймаут быстрого поворота, мс
 #include <EncButton.h>
 #include <GyverTimers.h>// бибилиотека для управления системными таймерами
 
 
 /*-----------------------Предустановки-----------------------*/
-//#define bufferBatt// включение обработки буферного аккумулятора
-//#define RPMwarning// включение предупреждения о высоких оборотах
+//#define bufferBatt  // включение обработки буферного аккумулятора
+//#define RPMwarning  // включение предупреждения о высоких оборотах
 //#define buzzPassive // дефайнить, если пищалка пассивная
-#define buzzActive // дефайнить, если пищалка активная
+#define buzzActive   // дефайнить, если пищалка активная
 //#define OneCylinder // Настройка количества цилиндров двигателя
 #define TwoCylinders
+//#define switchonanimation // Анимация при включении
 /*-----------------------------------------------------------*/
 
 
@@ -40,8 +40,8 @@
 # error "incompatible definitions buzzActive & buzzPassive" // нельзя одновременно дефайнить buzzActive и buzzPassive
 #endif
 #if ! defined buzzPassive && ! defined buzzActive
-# define noPiezo //без пьезоэлемента - пищалки
-# pragma message "Warning! buzzPassive or buzzActive are not defined" // необходимо задефайнить хотя бы одну из настроек buzzPassive & buzzActive
+# define noPiezo // без пьезоэлемента - пищалки
+# pragma message "Warning! buzzPassive or buzzActive are not defined"
 #endif
 #if defined OneCylinder && defined TwoCylinders
 # error "incompatible definitions OneCylinder & TwoCylinders" // нельзя одновременно дефайнить OneCylinder и TwoCylinders
@@ -55,16 +55,6 @@
 #endif
 /*-------------------------------------------------------------------------------------------------------------------------*/
 
-// для показа свободной оперативки
-extern int __bss_end;
-extern void *__brkval;
-
-const byte rightcursor[8] = {B11000, B11100, B11110, B11111, B11111, B11110, B11100, B11000}; // стрелка направо >
-const byte leftcursor[8] = {B00011, B00111, B01111, B11111, B11111, B01111, B00111, B00011}; // стрелка налево <
-const byte degree[8] = {140, 146, 146, 140, 128, 128, 128, 128}; //символ градуса
-const byte battL[8] = {B00100, B11111, B10000, B10010, B10111, B10010, B10000, B11111}; //  _-____-_
-const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B11111}; // | +    - |
-//                                                                                         |________|
 #define thermoSO 6  // Определяем константу с указанием № вывода Arduino к которому подключён вывод DO  ( SO, MISO ) модуля на чипе MAX6675
 #define thermoCS 5  // Определяем константу с указанием № вывода Arduino к которому подключён вывод CS  ( SS )       модуля на чипе MAX6675
 #define thermoSCK 4 // Определяем константу с указанием № вывода Arduino к которому подключён вывод CLK ( SCK )      модуля на чипе MAX6675
@@ -80,15 +70,21 @@ const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B
 
 #define CLK 0 // tm1637
 #define DIO 1
-#define analogpin1 14 // A0 пины для измерения
-#ifdef bufferBatt
-# define analogpin2 15 // A1 напряжения аккумуляторов
-#endif
-#define keypin 13
-#define ledpin 3
-#define buzz 10// пин пищалки
-#define A 16 // A2 пины энкодера
-#define B 17 // A3
+#define keypin 13 // кнопка
+#define ledpin 3 // светодиод
+#define buzz 10 // пин пищалки
+#define A 16    // A2 пины энкодера
+#define B 17    // A3
+
+#define analogpin1 14 // A0
+#define r1 22700.0    // сопротивление резистора r1
+#define r2 2710.0     // сопротивление резистора r2
+#define calibration1 1.126
+
+#define analogpin2 15 // A1
+#define r3 46450.0
+#define r4 5580.0
+#define calibration2 1.12
 
 #define tempsizing 296.89 // калибровочное значение для измерения температуры процессора
 #define tempGain 0.94
@@ -111,45 +107,50 @@ GyverMAX6675<thermoSCK2, thermoSO2, thermoCS2> thermo2;
 LiquidCrystal_I2C lcd(0x27, 16, LINES); // адрес 0x27, сегменты и строки дисплея
 GyverTM1637 disp(CLK, DIO);
 Tachometer tacho;
-EncButton<EB_TICK, A, B, keypin> enc;   // энкодер с кнопкой <A, B, KEY> (A, B, KEY - номера пинов)
-
-#define r1 22700.0 // сопротивление резистора r1
-#define r2 2710.0 // сопротивление резистора r2
-#define calibration1 1.126
+EncButton<EB_TICK, A, B, keypin> enc(INPUT_PULLUP);   // энкодер с кнопкой <A, B, KEY> (A, B, KEY - номера пинов)
 GetVolt firstbatt (r1, r2, calibration1);
-
 #ifdef bufferBatt
-# define r3 46450.0
-# define r4 5580.0
-# define calibration2 1.12
 GetVolt secondbatt (r3, r4, calibration2);
 #endif
 
-float input_volt = 0.0;
-float buff_input_volt = 0.0;
+float input_volt = 0.0, buff_input_volt = 0.0;
 
-boolean z, j, Hold, L; // z - для мигания текстом и светодиодом, j - для мигания светодиода при высоких оборотах,
-boolean ledState = LOW;// Hold - в меню неастроек, L - обновление значений счётчика моточасов
-int t1, t2, R; // t1, t2 - температура с термопар, R - для работы с RPM
-float e_hours, maxV, minV; // моточасы, максимальное и минимальное напряжение
-uint8_t bv; // bv - для показа напряжения буферного аккумулятора;
+boolean z, j, Hold, L;  // z - для мигания текстом и светодиодом, j - для мигания светодиода при высоких оборотах,
+boolean ledState = LOW; // Hold - в меню неастроек, L - обновление значений счётчика моточасов
+int t1, t2;          // t1, t2 - температура с термопар
+uint16_t R;             // R - для работы с RPM
+float e_hours, maxV, minV, minVMH; // моточасы, максимальное, минимальное напряжение, напряжение сохранения моточасов
+uint8_t bv;             // bv - для показа напряжения буферного аккумулятора;
 uint32_t myTimer4;
-volatile uint8_t m, h;// время поездки - минуты, часы объявляем volatile, т.к. обрабатываются прерыванием
+volatile uint8_t m, h;  // время поездки - минуты, часы объявляем volatile, т.к. обрабатываются прерыванием
+
+// для показа свободной оперативки
+extern int __bss_end;
+extern void *__brkval;
+
+const byte rightcursor[8] = {B11000, B11100, B11110, B11111, B11111, B11110, B11100, B11000}; // стрелка направо >
+const byte leftcursor[8] = {B00011, B00111, B01111, B11111, B11111, B01111, B00111, B00011}; // стрелка налево <
+const byte degree[8] = {140, 146, 146, 140, 128, 128, 128, 128}; // символ градуса
+const byte battL[8] = {B00100, B11111, B10000, B10010, B10111, B10010, B10000, B11111}; //  _-____-_
+const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B11111}; // | +    - |
+//                                                                                         |________|
+static const uint8_t CRTgammaPGM[32] PROGMEM = {
+  0, 1, 3, 5, 6, 8, 12, 14, 17, 21, 25, 30, 35, 40, 46, 53,
+  59, 67, 75, 84, 94, 103, 115, 127, 139, 153, 167, 182, 199, 216, 235, 255
+};
 
 /*для обработки энкодера и меню в LCD1602*/
 // названия параметров (max 12 букв)
 const char name1[] PROGMEM = "DSBrightness";
-const char name2[] PROGMEM = "MinVoltage";
-const char name3[] PROGMEM = "MaxVoltage";
+const char name2[] PROGMEM = "MaxCylTemp";
+const char name3[] PROGMEM = "MinVoltage";
+const char name4[] PROGMEM = "MaxVoltage";
 #if defined withPiezo
-const char name4[] PROGMEM = "Buzz Enable";
+const char name5[] PROGMEM = "Buzz Enable";
+const char name6[] PROGMEM = "Buzzer Test";
 #endif
-const char name5[] PROGMEM = "LED-PWM";
-const char name6[] PROGMEM = "MotorH-to-0";
-const char name7[] PROGMEM = "MaxCylTemp";
-#if defined withPiezo
-const char name8[] PROGMEM = "Buzzer Test";
-#endif
+const char name7[] PROGMEM = "LED-PWM";
+const char name8[] PROGMEM = "MotorH-to-0";
 
 // объявляем таблицу ссылок на параметры
 #if defined withPiezo
@@ -158,33 +159,33 @@ const char* const names[] PROGMEM = {
 };
 #elif defined noPiezo
 const char* const names[] PROGMEM = {
-  name1, name2, name3, name5, name6, name7
+  name1, name2, name3, name4, name7, name8
 };
 #endif
 
 int vals[SETTINGS_AMOUNT];  // массив параметров для сохранения настроек
 int8_t arrowPos = 0;
-bool controlState = 0; //для изменения режима в меню
+bool controlState = 0; // для изменения режима в меню
 
 /* ---Описание функций--- */
-//код скомпилируется быстрее
-void thermocouple();
-void isButtonSingle();
-void isButtonDouble();
+// код скомпилируется быстрее
+inline __attribute__((always_inline)) void thermocouple();
+inline __attribute__((always_inline)) void isButtonSingle();
+inline __attribute__((always_inline)) void isButtonDouble();
 void lcdUpdate();
 void printGUI();
-void printFromPGM(int charMap);
-void smartArrow(bool state1);
-uint16_t memoryFree();
-byte getBrightCRT(byte val);
+inline __attribute__((always_inline)) void printFromPGM(int charMap);
+inline __attribute__((always_inline)) void smartArrow(bool state1);
+inline __attribute__((always_inline)) uint16_t memoryFree();
+
 
 void setup() {
   // !!!Обязательно размещается в начале setup, иначе уходит в bootloop!!!
   Watchdog.enable(RESET_MODE, WDT_PRESCALER_512);// режим сброса при зависании, таймаут 4 сек.
   // Либо размещается в любом месте сетапа, но с условием отключения WDT в начале сeтапа функцией watchdog.disable()
   // Это связано с тем, что контроллер автоматически ставит таймаут WDT на 16 мс, и, если функция watchdog.enable() стоит не в начале, код до неё может
-  // выполняться дольше 16 мс и контроллер уходит в bootloop, вернее WDT перезагружает контроллер каждые 16 мс. Может случиться, что даже, если сбросили
-  // таймер в начале сетапа, контроллер всё равно уходит в bootloop, тогда необходимо перепрошить загрузчик или убрать его совсем.
+  // выполняться дольше 16 мс - контроллер уходит в bootloop, (WDT перезагружает контроллер каждые 16 мс). Если контроллер всё равно уходит в bootloop,
+  // даже когда таймер сброшен, необходимо перепрошить загрузчик или убрать его совсем.
 
   lcd.init();// инициализация lcd1602
   //pinMode(turnpin1, INPUT); // для указателей поворота | при загрузке скетча через USBasp отсоединить
@@ -195,13 +196,15 @@ void setup() {
 #endif
 
   analogPrescaler(128);// !!!ВНИМАНИЕ предделитель АЦП 128 - наивысшая точность (при использовании GyverCore)
+
   analogReference(INTERNAL);// опорное напряжения для аналоговых измерений 1.1вольт
   attachInterrupt(0, sens, FALLING); // прерывание на 2 пин(2пин-0, 3пин-1)
   tacho.setWindow(5);// установка количества тиков для счёта времени (по умолч 10)
   EEPROM.get(4, vals);// получаем весь массив из EEPROM
   disp.brightness(vals[0]);// Яркость индикатора (0-7)
-  minV = float(vals[1]) / 10;
-  maxV = float(vals[2]) / 10;
+  minV = float(vals[2]) * 0.1;
+  minVMH = minV - 1.5; // из мин. напряжения вычитаем 1.5 вольта, чтобы моточасы записывались только при выключении
+  maxV = float(vals[3]) * 0.1;
   // Если перенастроить 0 таймер, не будут работать delay(), millis(), micros() и т.д.
   // На 1 таймере может некорректно работать ШИМ на 9 и 10 пинах, а также библиотека Servo!
   // На 2 таймере отключится tone()
@@ -216,26 +219,13 @@ void setup() {
   // Важный момент: обёрнутые в F() строки оптимизируются, то есть одинаковые строки не дублируются в памяти!
   // Поэтому можно использовать макрос в разных участках программы, одинаковые строки не нужно выносить глобально и делать их общими – это сделает компилятор
   lcd.backlight();// подсветка lcd1602
-  lcd.home();
-#ifdef TwoCylinders
-  lcd.print(F("tL=  \1C"));
-  lcd.setCursor(0, 1);
-  lcd.print(F("tR=  \1C"));
-#elif defined OneCylinder
-  lcd.print(F("tc=  \1C"));
-#endif
-  lcd.setCursor(10, 1);
-  lcd.print(char(4)); // левая часть значка аккумулятора
-  lcd.print(char(5));// правая часть
-
+  thermocouple();
+  lcdUpdate();
+#ifdef switchonanimation
   byte ON[4] = {0, 0, 0, 0};
-  disp.twist(ON, 30);// анимация при включении
-  //delay(150);// стабилизация max6675 (время конверсии чипа - 170-220 мс)
+  disp.twist(ON, 27);// анимация при включении
   disp.clear();
-  //float(+4) необходимо очистить значения в каждом адресе памяти, затем этот код убрать или закомментировать
-  //  for (int i = 0; i < sizeof(vals) + 4 ; i++) {
-  //    EEPROM.put (i, 0);
-  //  }
+#endif
   myTimer4 = millis();
 }
 
@@ -246,7 +236,7 @@ void sens() {
 
 
 ISR(TIMER1_A) {// прерывание для счёта времени
-  static uint8_t sec;
+  static volatile uint8_t sec;
   if (++sec > 59) {// если после инкрементирования секунд больше, чем 59
     sec = 0;
     if (++m > 59) {// проверяем, после инкрементирования минут больше ли 59
@@ -260,146 +250,117 @@ ISR(TIMER1_A) {// прерывание для счёта времени
 void loop() {
   /*--обработка энкодера с кнопкой--*/
   enc.tick();// обработчик энкодера с кнопкой
-  static bool P;
+
   // смена режимов показа на дисплее
   if (enc.held()) {
     Hold = !Hold;
-    digitalWrite (ledpin, LOW);
-    if (!Hold) {
-      minV = float(vals[1]) / 10.0;// делим на 10, чтобы получить флоат с 1 знаком после точки
-      maxV = float(vals[2]) / 10.0;
-      lcdUpdate();//Hold == 0, очищаем дисплей
-    }
-    else { // при переходе в режим настройки
-      P = true;// меняем флаг для однократного чтения из EEPROM при запуске настроек
-      lcd.clear();
-      printGUI();// выводим интерфейс меню
+    switch (Hold) {
+      case 0:
+        EEPROM.put(4, vals); // запись при переходе ИЗ режима настроек
+        minV = float(vals[2]) * 0.1;// делим на 10, чтобы получить флоат с 1 знаком после точки
+        maxV = float(vals[3]) * 0.1;
+        minVMH = minV - 1.5; // из мин. напряжения вычитаем 1.5 вольта, чтобы моточасы записывались только при выключении
+        digitalWrite (ledpin, LOW);
+        lcdUpdate();// Hold == 0, очищаем дисплей
+        break;
+      case 1: // при переходе в режим настройки
+#if defined withPiezo
+        analogWrite (ledpin, pgm_read_byte(&(CRTgammaPGM[vals[6]])));
+#elif deifned noPiezo
+        analogWrite (ledpin, pgm_read_byte(&(CRTgammaPGM[vals[4]])));
+#endif
+        disp.displayByte(_t, _u, _n, _e);
+        lcd.clear();
+        printGUI();// выводим интерфейс меню
+        break;
     }
   }
 
 
   switch (Hold) {
     /* --обработка в режиме настроек-- */
-    case 1: {//Hold == true
-        // P - флаг для однократного получения параметров при входе в меню
-        if (P) {// получили переменные 1 раз
-          EEPROM.get(4, vals);
-          P = false;// и опустили флаг
-        }
-        disp.displayByte(_t, _u, _n, _e);
+    case 1: {
+        // если отключили питание в меню, то сохраняем настройки
+        if (input_volt < minV) EEPROM.put(4, vals);
+
         if (enc.click()) {
           controlState = !controlState;
-          if (!controlState)// при клике и переходе из режима настроек
-            EEPROM.put(4, vals);// запись массива в 4 ячейку памяти
-
-          printGUI(); //печатаем на дисплее (названия настроек)
+          printGUI(); // печатаем на дисплее (названия настроек)
         }
-        /*или если не перешёл в режим прокрутки меню (и при выключении), а просто вышел, тоже сохраняем*/
-        if (input_volt < minV || (controlState && enc.press())) EEPROM.put(4, vals);
 
         if (enc.turn()) { // если повернули (факт поворота)
-          int increment = 0;  // локальная переменная направления (инкрементирования)
-          // получаем направление
-          if (!controlState) { // controlState == 0 (если не равно 1, управляем ВЫБОРОМ НАСТРОЕК)
-            if (enc.right()) increment = 1;
-            if (enc.left()) increment = -1;
-            arrowPos += increment;  // двигаем курсор
-            arrowPos = constrain(arrowPos, 0, SETTINGS_AMOUNT - 1); // ограничиваем позицию стрелки
-          }
+          switch (controlState) {
+            case 0: // управляем ВЫБОРОМ НАСТРОЕК
+              arrowPos += enc.dir();  // двигаем курсор. dir возвращает 1 или -1
+              arrowPos = constrain(arrowPos, 0, SETTINGS_AMOUNT - 1); // ограничиваем позицию стрелки
+              break;
 
-          increment = 0;  // обнуляем инкремент
-          if ((controlState && enc.right())) increment = 1;// если controlState == 0 управляем ПАРАМЕТРАМИ
-          if ((controlState && enc.left())) increment = -1;
-
-          if (controlState && enc.fast() && (enc.dir() == 1)) increment = FAST_STEP;// быстрый поворот и направление вправо
-          if (controlState && enc.fast() && (enc.dir() == -1)) increment = -FAST_STEP;// влево
-          vals[arrowPos] += increment;  // меняем параметры по позиции стрелки
+            case 1: // управляем ПАРАМЕТРАМИ
+              // меняем параметры по позиции стрелки
+              switch (enc.dir()) { // если поворот быстрый, прибавляем FAST_STEP, иначе прибавляем 1
+                case 1:  vals[arrowPos] += enc.fast() ? FAST_STEP : 1; break;
+                case -1: vals[arrowPos] += enc.fast() ? -FAST_STEP : -1; break;
+              }
 #if defined withPiezo // для системы с пьезоэлементом
 
-          switch (arrowPos) {// ограничиваем только изменённые настройки
-            case 0:
-              vals[0] = constrain(vals[0], 0, 7);//ограничиваем парметр яркости дисплея
-              break;
-            case 1:
-              vals[1] = constrain(vals[1], 0, vals[2]);//  minV   параметры int - потом делятся на 10 и получаются float
-              break;
-            case 2:
-              vals[2] = constrain(vals[2], vals[1], 999);//maxV
-              break;
-            case 3:
-              vals[3] = constrain(vals[3], 0, 1);// пищалка указателей поворота
-              break;
-            case 4:
-              vals[4] = constrain(vals[4], 0, 255);// параметр яркости светодиода
-              break;
-            case 5:
-              if (vals[5]) {// если равно единице обнуляем счётчик моточасов (покрутить энкодер)
-                vals[5] = 0;// параметр обнуления моточасов
-                e_hours = 0;
-                EEPROM.put(0, e_hours);// запись моточасов в нулевую ячейку памяти
+              switch (arrowPos) {// ограничиваем только изменённые настройки
+                case 0: vals[0] = constrain(vals[0], 0, 7); break; //ограничиваем парметр яркости дисплея
+                case 1: vals[1] = constrain(vals[1], 0, 800); break; // параметр максимальной температуры цилиндров
+                case 2: vals[2] = constrain(vals[2], 0, vals[3]); break; //  minV   параметры int - потом делятся на 10 и получаются float
+                case 3: vals[3] = constrain(vals[3], vals[2], 999); break; //maxV
+                case 4: vals[4] = constrain(vals[4], 0, 1); break; // пищалка указателей поворота
+                case 5: vals[5] = constrain(vals[5], 0, 1); // тест пищалки
+                  switch (vals[5]) {
+                    case 1:
+# ifdef buzzPassive
+                      tone (buzz, 2000);
+# elif defined buzzActive
+                      digitalWrite (buzz, HIGH);
+# endif
+                      break;
+                    case 0:
+# ifdef buzzPassive
+                      noTone (buzz);
+# elif defined buzzActive
+                      digitalWrite (buzz, LOW);
+# endif
+                      break;
+                  }
+                  break;
+                case 6: vals[6] = constrain(vals[6], 0, 31); // параметр яркости светодиода
+                  analogWrite (ledpin, pgm_read_byte(&(CRTgammaPGM[vals[6]]))); // CRT коррекция с 32 уровнями
+                  break;
+                case 7: if (vals[7]) { // если равно единице обнуляем счётчик моточасов (покрутить энкодер)
+                    vals[7] = 0; // параметр обнуления моточасов
+                    e_hours = 0;
+                    EEPROM.put(0, e_hours); // запись моточасов в нулевую ячейку памяти
+                  }
+                  break;
               }
-              break;
-            case 6:
-              vals[6] = constrain(vals[6], 0, 800);// параметр максимальной температуры цилиндров
-              break;
-            case 7:
-              vals[7] = constrain(vals[7], 0, 1);// тест пищалки
-              break;
-          }
 
 #elif defined noPiezo// для системы БЕЗ пьезоэлемента:
 
-          switch (arrowPos) {
-            case 0:
-              vals[0] = constrain(vals[0], 0, 7);// ограничиваем парметр яркости дисплея
-              break;
-            case 1:
-              vals[1] = constrain(vals[1], 0, vals[2]);//  minV
-              break;
-            case 2:
-              vals[2] = constrain(vals[2], vals[1], 999);//maxV
-              break;
-            case 3:
-              vals[3] = constrain(vals[3], 0, 255);// параметр яркости светодиода
-              break;
-            case 4:
-              if (vals[4]) {
-                vals[4] = 0;
-                e_hours = 0;
-                EEPROM.put(0, e_hours);
+              switch (arrowPos) {
+                case 0: vals[0] = constrain(vals[0], 0, 7); break;    // ограничиваем парметр яркости дисплея
+                case 1: vals[1] = constrain(vals[1], 0, 800); break;  // параметр максимальной температуры цилиндров
+                case 2: vals[2] = constrain(vals[2], 0, vals[3]); break;    // minV
+                case 3: vals[3] = constrain(vals[3], vals[2], 999); break;  // maxV
+                case 4: vals[4] = constrain(vals[4], 0, 31); // параметр яркости светодиода
+                  analogWrite (ledpin, pgm_read_byte(&(CRTgammaPGM[vals[4]])));
+                  break;
+                case 5: if (vals[5]) {
+                    vals[5] = 0;
+                    e_hours = 0;
+                    EEPROM.put(0, e_hours);
+                  }
+                  break;
               }
-              break;
-            case 5:
-              vals[5] = constrain(vals[5], 0, 800);// параметр максимальной температуры цилиндров
-              break;
-          }
-
 #endif
+              break;
+          } // switch (controlState)
           printGUI();
         }
-
-#if defined withPiezo
-        if (vals[7]) {// Тест пищалки
-# ifdef buzzPassive
-          tone (buzz, 2000);
-# elif defined buzzActive
-          digitalWrite (buzz, HIGH);
-# endif
-        }
-        else {
-# ifdef buzzPassive
-          noTone (buzz);
-# elif defined buzzActive
-          digitalWrite (buzz, LOW);
-# endif
-        }
-
-        analogWrite (ledpin, getBrightCRT(vals[4]));
-#elif defined noPiezo
-        analogWrite (ledpin, getBrightCRT(vals[3]));
-#endif
       }
-
       break; //!конец switch-case: 1!
 
 
@@ -419,7 +380,7 @@ void loop() {
           ls = l;// запоминаемм, чтобы потом выключить нужную стрелку
           // включаем светодиод и пищим
 #if defined withPiezo
-          if (vals[3]) {
+          if (vals[4]) {
 # ifdef buzzActive
             digitalWrite (buzz, HIGH);// пищим если разрешено в настройках
 # elif defined buzzPassive
@@ -428,30 +389,34 @@ void loop() {
           }
 #endif
           digitalWrite(ledpin, HIGH);
-          if (l) {
-            lcd.setCursor(8, 1);
-            lcd.print(char(3));
-          }
-          else {
-            lcd.setCursor(9, 1);
-            lcd.print(char(2));
+          switch (l) {
+            case 1:
+              lcd.setCursor(8, 1);
+              lcd.print(char(3));
+              break;
+            case 0:
+              lcd.setCursor(9, 1);
+              lcd.print(char(2));
+              break;
           }
           TurnOff = true;// флаг для однократного выключения
         }
         else if (TurnOff) {// чтобы постоянно не выключался светодиод, выключаем по флагу
           TurnOff = false;
 #if defined withPiezo
-          if (vals[3]) {
+          if (vals[4]) {
 # ifdef buzzActive
-            digitalWrite (buzz, LOW);// пищим если разрешено в настройках
+            digitalWrite (buzz, LOW);
 # elif defined buzzPassive
             noTone(buzz);
 # endif
           }
 #endif
-          digitalWrite(ledpin, LOW);// выключаем светодиод
-          if (ls) lcd.setCursor(8, 1);
-          else lcd.setCursor(9, 1);
+          digitalWrite(ledpin, LOW);
+          switch (ls) {
+            case 1: lcd.setCursor(8, 1); break;
+            case 0: lcd.setCursor(9, 1); break;
+          }
           lcd.print(F(" "));// выключаем нужную стрелку
         }
 
@@ -468,17 +433,10 @@ void loop() {
 
         static bool flag; // флаг для однократной очистки дисплея, если выводились какие-либо строки
         lcd.setCursor(8, 0);
-#ifdef TwoCylinders && defined withPiezo
-        if (t1 > vals[6] || t2 > vals[6]) // если температура больше заданной
-
-#elif defined TwoCylinders && defined noPiezo
-        if (t1 > vals[5] || t2 > vals[5])
-
-#elif defined OneCylinder && defined withPiezo
-        if (t1 > vals[6])
-
-#elif defined OneCylinder && defined noPiezo
-        if (t1 > vals[5])
+#ifdef TwoCylinders
+        if (t1 > vals[1] || t2 > vals[1]) // если температура больше заданной
+#elif defined OneCylinder
+        if (t1 > vals[1])
 #endif
         {
           switch (z) {
@@ -551,7 +509,8 @@ void loop() {
               lcd.print(input_volt);
               break;
           }
-          if (buff_input_volt >= minV) {// при выходе из цикла напечатать значок
+          buff_input_volt = secondbatt.getVolt(analogRead(analogpin2));
+          if (buff_input_volt >= minV) { // при выходе из цикла напечатать значок
             lcd.setCursor(10, 1);
             lcd.print(char(4));
             lcd.print(char(5));
@@ -571,6 +530,7 @@ void loop() {
               lcd.print(F("LOW Bv  "));
               break;
           }
+          buff_input_volt = secondbatt.getVolt(analogRead(analogpin2));
           if (buff_input_volt >= minV) {// при выходе из цикла напечатать значок
             lcd.setCursor(0, 1);
             lcd.print(F("BV="));
@@ -581,17 +541,10 @@ void loop() {
 
         /* --управление светодиодом-- */
         static bool le;
-#if defined TwoCylinders && defined withPiezo
-        if ((millis() - myTimer4 > 1200) && ((t1 > vals[6]) ||  (t2 > vals[6]) || (input_volt < minV) || (input_volt > maxV)))
-
-#elif defined TwoCylinders && defined noPiezo
-        if ((millis() - myTimer4 > 1200) && ((t1 > vals[5]) ||  (t2 > vals[5]) || (input_volt < minV) || (input_volt > maxV)))
-
-#elif defined OneCylinder && defined withPiezo
-        if ((millis() - myTimer4 > 1200) && ((t1 > vals[6]) || (input_volt < minV) || (input_volt > maxV)))
-
-#elif defined OneCylinder && defined noPiezo
-        if ((millis() - myTimer4 > 1200) && ((t1 > vals[5]) || (input_volt < minV) || (input_volt > maxV)))
+#if defined TwoCylinders
+        if ((millis() - myTimer4 > 1200) && ((t1 > vals[1]) ||  (t2 > vals[1]) || (input_volt < minV) || (input_volt > maxV)))
+#elif defined OneCylinder
+        if ((millis() - myTimer4 > 1200) && ((t1 > vals[1]) || (input_volt < minV) || (input_volt > maxV)))
 #endif
         {
           // управляем светодиодом если прошло больше секунды с момента включения указателей поворота
@@ -615,7 +568,7 @@ void loop() {
 
         /* --если кол-во оборотов больше 5800, то включать, выключать светодиод-- */
 #ifdef RPMwarning
-        if (R >= 5800 && (millis() - myTimer4 > 1200)) {
+        if ((millis() - myTimer4 > 1200) && R >= 5800) {
           static uint16_t myTimer;
           uint16_t ms = (uint16_t)millis();
           if (ms - myTimer >= 400) {
@@ -623,12 +576,8 @@ void loop() {
             j = !j;
           }
           switch (j) {
-            case 1:
-              ledState = HIGH;
-              break;
-            case 0:
-              ledState = LOW;
-              break;
+            case 1: ledState = HIGH; break;
+            case 0: ledState = LOW; break;
           }
           digitalWrite(ledpin, ledState);
         }
@@ -656,14 +605,14 @@ void loop() {
   }
 
   /*записываем значание моточасов в память при выключении м-к или при нажатии на кнопку*/
-  if (L || ((input_volt < minV) && (input_volt != 0.0))) {
+  if (input_volt < minVMH || L) {
     static uint32_t sec1;// sec2 делаем просто локальной, а sec1 - static, чтобы сохраняла значение между вызовами функции
     uint32_t sec2;
     L = false;
     EEPROM.get(0, e_hours);// читаем из памяти
     sec2 = millis();// запоминаем текущее время
     // разницу настоящего значения времени и предыдущего в миллисекундах преобразуем в десятичные часы
-    e_hours += (sec2  - sec1) / 3600000.0;
+    e_hours += (sec2  - sec1) / 3.6E6; // 3600000
     EEPROM.put(0, e_hours);// записываем в ЭСППЗУ
     sec1 = sec2;// запоминаем время для следующей итерации
   }
@@ -723,7 +672,7 @@ void thermocouple() {
 void isButtonSingle() { // действия после одиночного нажатия кнопки
   uint32_t myTimer = millis();
   digitalWrite(ledpin, LOW);
-  disp.displayByte(_U, _2, _9, _3);// выводим версию программы на дисплей
+  disp.displayByte(_U, _2, _9, _4);// выводим версию программы на дисплей
   lcd.clear();
   Watchdog.reset();// сбрасываем таймер перед циклом
   while (millis() - myTimer < 3650) {
@@ -774,8 +723,7 @@ void lcdUpdate() {
   lcd.print(F("tR="));
   lcd.print(t2);
   lcd.print(F("\1C"));
-#endif
-#ifdef OneCylinder
+#elif defined OneCylinder
   lcd.print(F("tc="));
   lcd.print(t1);
   lcd.print(F("\1C"));
@@ -785,7 +733,7 @@ void lcdUpdate() {
 # endif
 #endif
   lcd.setCursor(10, 1);
-  lcd.print(char(4));//  левая половина значка аккумулятора
+  lcd.print(char(4));// левая половина значка аккумулятора
   lcd.print(char(5));// правая половина
 }
 
@@ -837,8 +785,4 @@ uint16_t memoryFree() {// функция вывода свободной опе�
   else
     freeValue = ((uint16_t)&freeValue) - ((uint16_t)__brkval);
   return freeValue;
-}
-
-byte getBrightCRT(byte val) { // коррекция яркости светодиода CRT кубической параболой
-  return ((long)val * val * val + 130305) >> 16;
 }
