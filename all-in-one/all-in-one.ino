@@ -194,7 +194,7 @@ void setup() {
   pinMode(buzz, OUTPUT);
 #endif
 
-  //  analogPrescaler(128);// !!!ВНИМАНИЕ предделитель АЦП 128 - наивысшая точность (при использовании GyverCore)
+  analogPrescaler(128);// !!!ВНИМАНИЕ предделитель АЦП 128 - наивысшая точность (при использовании GyverCore)
   analogReference(INTERNAL);// опорное напряжения для аналоговых измерений 1.1вольт
   attachInterrupt(0, sens, FALLING); // прерывание на 2 пин(2пин-0, 3пин-1)
   tacho.setWindow(5);// установка количества тиков для счёта времени (по умолч 10)
