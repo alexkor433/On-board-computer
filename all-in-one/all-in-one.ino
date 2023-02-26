@@ -1,13 +1,8 @@
 /*версия для бортового компьютера на плате
-  Настройки: энкодер (EB_BETTER_ENC (установлен по умолчанию с версии 2.0 библиотеки), EB_HALFSTEP_ENC, EB_FAST, keypin, A, B (пины энкодера)),
-  указатели поворота (turnpin1, turnpin2), TM1637 (CLK, DIO), аналоговые преобразования (analogpin1, analogpin2, сопротивление резисторов r1, r2,
-  r3, r4 в делителе напряжения, калибровка calibration1, calibration2), калибровка температуры процессора (tempsizing), пин пищалки (buzz),
-  LiquidCrystal_I2C (настройка адреса), MAX6675_DELAY (задержка переключения CLK в микросекундах для улучшения связи по длинным проводам),
-  настройка меню (SETTINGS_AMOUNT, FAST_STEP), настройки препроцессором (bufferBatt, RPMwarning, buzzPassive, buzzActive, OneCylinder, TwoCylinders,
-  switchonanimation). Остальные настройки производятся через меню бортового компьютера.
-  Можно искать настройки по тексту программы через Ctrl + F*/
+  Настройки библиотек: EB_BETTER_ENC (установлен по умолчанию с версии 2.0 библиотеки), EB_HALFSTEP_ENC, EB_FAST, MAX6675_DELAY
+  Пользовательские настройки находятся в Confihuration.h */
 
-#pragma message "Version 2.9.5"
+#pragma message "Version 2.9.5.2"
 #include <EEPROM.h>
 #include <GyverWDT.h> // библиотека сторожевого таймера
 #include <LiquidCrystal_I2C.h>
@@ -22,17 +17,7 @@
 #include <EncButton.h>
 #include <GyverTimers.h>// бибилиотека для управления системными таймерами
 
-
-/*-----------------------Предустановки-----------------------*/
-//#define bufferBatt  // включение обработки буферного аккумулятора
-//#define RPMwarning  // включение предупреждения о высоких оборотах
-//#define buzzPassive // дефайнить, если пищалка пассивная
-#define buzzActive   // дефайнить, если пищалка активная
-//#define OneCylinder // Настройка количества цилиндров двигателя
-#define TwoCylinders
-//#define switchonanimation // Анимация при включении
-/*-----------------------------------------------------------*/
-
+#include "Configuration.h"
 
 /*--Предупраждения о несовместимости определений--*/
 /*--------------------------------------------------------!НЕ КОММЕНТИРОВАТЬ!----------------------------------------------*/
@@ -53,41 +38,6 @@
 #endif
 /*-------------------------------------------------------------------------------------------------------------------------*/
 
-#define thermoSO 6  // Определяем константу с указанием № вывода Arduino к которому подключён вывод DO  ( SO, MISO ) модуля на чипе MAX6675
-#define thermoCS 5  //                                                                               CS  ( SS )       модуля на чипе MAX6675
-#define thermoSCK 4 //                                                                               CLK ( SCK )      модуля на чипе MAX6675
-
-#ifdef TwoCylinders
-# define thermoSO2 7 // для датчика второго цилиндра
-# define thermoCS2 8
-# define thermoSCK2 9
-#endif
-
-#define turnpin1 12 // пины указателей поворота
-#define turnpin2 11
-
-#define CLK 0 // tm1637
-#define DIO 1
-#define keypin 13 // кнопка
-#define ledpin 3 // светодиод
-#define buzz 10 // пин пищалки
-#define A 16    // A2 пины энкодера
-#define B 17    // A3
-
-#define analogpin1 14 // A0
-#define r1 22700.0    // сопротивление резистора r1
-#define r2 2710.0     // сопротивление резистора r2
-#define calibration1 1.126
-
-#define analogpin2 15 // A1
-#define r3 46450.0
-#define r4 5580.0
-#define calibration2 1.12
-
-// калибровочные значения для измерения температуры процессора
-#define tempsizing 296.89
-#define tempGain 0.94
-
 /*для меню настроек*/
 #define LINES 2       // количество строк дисплея
 #if defined withPiezo
@@ -103,7 +53,7 @@ GyverMAX6675<thermoSCK, thermoSO, thermoCS> thermo;
 #ifdef TwoCylinders
 GyverMAX6675<thermoSCK2, thermoSO2, thermoCS2> thermo2;
 #endif
-LiquidCrystal_I2C lcd(0x27, 16, LINES); // адрес 0x27, сегменты и строки дисплея
+LiquidCrystal_I2C lcd(lcdAddr, 16, LINES); // адрес 0x27, сегменты и строки дисплея
 GyverTM1637 disp(CLK, DIO);
 Tachometer tacho;
 EncButton<EB_TICK, A, B, keypin> enc(INPUT_PULLUP);   // энкодер с кнопкой <A, B, KEY> (A, B, KEY - номера пинов)
@@ -114,6 +64,7 @@ GetVolt secondbatt (r3, r4, calibration2);
 
 float input_volt = 0.0, buff_input_volt = 0.0;
 
+bool Hold;
 uint16_t R, t1, t2; // R - для работы с RPM, t1, t2 - температура с термопар
 float e_hours, maxV, minV, minVMH; // моточасы, максимальное, минимальное напряжение, напряжение сохранения моточасов
 uint16_t myTimer4;
@@ -179,12 +130,14 @@ struct {
 
 /* ---Описание функций--- */
 // код скомпилируется быстрее
+inline __attribute__((always_inline)) void sensorsProcessing();
+inline __attribute__((always_inline)) void mainGUI();
 inline __attribute__((always_inline)) void thermocouple();
 inline __attribute__((always_inline)) void isButtonSingle();
 inline __attribute__((always_inline)) void isButtonDouble();
 void lcdUpdate();
 inline __attribute__((always_inline)) void menuHandler();
-void printGUI();
+void menuGUI();
 inline __attribute__((always_inline)) void printFromPGM(int charMap);
 inline __attribute__((always_inline)) void smartArrow(bool state1);
 inline __attribute__((always_inline)) uint16_t memoryFree();
@@ -200,7 +153,7 @@ void setup() {
 
   lcd.init();// инициализация lcd1602
   pinMode(ledpin, OUTPUT);
-#if defined withPiezo
+#ifdef buzzActive
   pinMode(buzz, OUTPUT);
 #endif
 
@@ -258,32 +211,33 @@ ISR(TIMER1_A) {// прерывание для счёта времени
 
 void loop() {
   /*--обработка энкодера с кнопкой--*/
-  enc.tick();// обработчик энкодера с кнопкой
+  static bool L; // L - обновление значений счётчика моточасов
 
-  // смена режимов показа на дисплее
-  static bool Hold, L; // L - обновление значений счётчика моточасов
-  if (enc.held()) {
-    Hold = !Hold;
-    switch (Hold) {
-      case 0:
-        EEPROM.put(4, vals); // запись при переходе ИЗ режима настроек
-        minV = float(vals[2]) * 0.1;// делим на 10, чтобы получить флоат с 1 знаком после точки
-        maxV = float(vals[3]) * 0.1;
-        minVMH = minV - 1.5; // из мин. напряжения вычитаем 1.5 вольта, чтобы моточасы записывались только при выключении
-        digitalWrite (ledpin, LOW);
-        disp.clear();
-        lcdUpdate();// Hold == 0, очищаем дисплей
-        break;
-      case 1: // при переходе в режим настройки
+  if (enc.tick()) { // обработчик энкодера с кнопкой
+    // смена режимов показа на дисплее
+    if (enc.held()) {
+      Hold = !Hold;
+      switch (Hold) {
+        case 0:
+          EEPROM.put(4, vals); // запись при переходе ИЗ режима настроек
+          minV = float(vals[2]) * 0.1;// делим на 10, чтобы получить флоат с 1 знаком после точки
+          maxV = float(vals[3]) * 0.1;
+          minVMH = minV - 1.5; // из мин. напряжения вычитаем 1.5 вольта, чтобы моточасы записывались только при выключении
+          digitalWrite (ledpin, LOW);
+          disp.clear();
+          lcdUpdate();
+          break;
+        case 1: // при переходе в режим настройки
 #if defined withPiezo
-        analogWrite (ledpin, pgm_read_byte(&(CRTgammaPGM[vals[6]])));
+          analogWrite (ledpin, pgm_read_byte(&(CRTgammaPGM[vals[6]])));
 #elif defined noPiezo
-        analogWrite (ledpin, pgm_read_byte(&(CRTgammaPGM[vals[4]])));
+          analogWrite (ledpin, pgm_read_byte(&(CRTgammaPGM[vals[4]])));
 #endif
-        disp.displayByte(_t, _u, _n, _e);
-        lcd.clear();
-        printGUI();// выводим интерфейс меню
-        break;
+          disp.displayByte(_t, _u, _n, _e);
+          lcd.clear();
+          menuGUI();// выводим интерфейс меню
+          break;
+      }
     }
   }
 
@@ -307,27 +261,28 @@ void loop() {
         if (l || digitalRead(turnpin2) == HIGH) {// если какой-то из указателей загорелся
           myTimer4 = (uint16_t)millis(); // запоминаем время для избежания наложения включений светодиода
           ls = l;// запоминаемм, чтобы потом выключить нужную стрелку
-          // включаем светодиод и пищим
+          if (!TurnOff) { // для однократного выполнения кода:
 #if defined withPiezo
-          if (vals[4])
+            if (vals[4])
 # ifdef buzzActive
-            digitalWrite (buzz, HIGH);// пищим если разрешено в настройках
+              digitalWrite (buzz, HIGH);// пищим если разрешено в настройках
 # elif defined buzzPassive
-            tone (buzz, 2000);
+              tone (buzz, buzzFrq);
 # endif
 #endif
-          digitalWrite(ledpin, HIGH);
-          switch (l) {
-            case 1:
-              lcd.setCursor(8, 1);
-              lcd.print(char(3));
-              break;
-            case 0:
-              lcd.setCursor(9, 1);
-              lcd.print(char(2));
-              break;
+            digitalWrite(ledpin, HIGH);
+            switch (l) {
+              case 1:
+                lcd.setCursor(8, 1);
+                lcd.print(char(3));
+                break;
+              case 0:
+                lcd.setCursor(9, 1);
+                lcd.print(char(2));
+                break;
+            }
+            TurnOff = true;// флаг для однократного выключения
           }
-          TurnOff = true;// флаг для однократного выключения
         }
         else if (TurnOff) {// чтобы постоянно не выключался светодиод, выключаем по флагу
           TurnOff = false;
@@ -522,10 +477,31 @@ void loop() {
 
 
   /* --вывод значения тахометра и получение напряжения-- */
-  static uint8_t myTimer2;
-  uint8_t ms2 = (uint8_t)millis();
-  if (uint8_t(ms2 - myTimer2) > 100) {
-    myTimer2 = ms2;
+  sensorsProcessing();
+
+  /*записываем значание моточасов в память при выключении м-к или при нажатии на кнопку*/
+  if (volt.lowMH || L) {
+    static uint32_t sec1;// sec2 делаем просто локальной, а sec1 - static, чтобы сохраняла значение между вызовами функции
+    uint32_t sec2;
+    L = false;
+    EEPROM.get(0, e_hours);// читаем из памяти
+    sec2 = millis();// запоминаем текущее время
+    // разницу настоящего значения времени и предыдущего в миллисекундах преобразуем в десятичные часы
+    e_hours += (sec2  - sec1) / 3.6E6; // 3600000
+    EEPROM.put(0, e_hours);// записываем в ЭСППЗУ
+    sec1 = sec2;// запоминаем время для следующей итерации
+  }
+
+  /* --вывод информации на дисплей-- */
+  mainGUI();
+}
+
+
+void sensorsProcessing() {
+  static uint8_t tmr;
+  uint8_t ms = (uint8_t)millis();
+  if (uint8_t(ms - tmr) > 100) {
+    tmr = ms;
     static uint16_t prevR;
 #if defined TwoCylinders
     R = tacho.getRPM() >> 1;
@@ -552,25 +528,14 @@ void loop() {
       volt.high = (input_volt > maxV) ? true : false;
     }
   }
+}
 
-  /*записываем значание моточасов в память при выключении м-к или при нажатии на кнопку*/
-  if (volt.lowMH || L) {
-    static uint32_t sec1;// sec2 делаем просто локальной, а sec1 - static, чтобы сохраняла значение между вызовами функции
-    uint32_t sec2;
-    L = false;
-    EEPROM.get(0, e_hours);// читаем из памяти
-    sec2 = millis();// запоминаем текущее время
-    // разницу настоящего значения времени и предыдущего в миллисекундах преобразуем в десятичные часы
-    e_hours += (sec2  - sec1) / 3.6E6; // 3600000
-    EEPROM.put(0, e_hours);// записываем в ЭСППЗУ
-    sec1 = sec2;// запоминаем время для следующей итерации
-  }
 
-  /* --вывод информации на дисплей-- */
-  static uint16_t myTimer1;
-  uint16_t ms1 = (uint16_t)millis();
-  if (ms1 - myTimer1 >= 1000) {
-    myTimer1 = ms1;
+void mainGUI() {
+  static uint16_t tmr;
+  uint16_t ms = (uint16_t)millis();
+  if (ms - tmr >= 1000) {
+    tmr = ms;
     Watchdog.reset();// защита от зависания - сбрасываем таймер Watchdog раз в секунду
     static uint16_t prevT1, prevT2;
     thermocouple();
@@ -695,7 +660,7 @@ void menuHandler() {
 
   if (enc.click()) {
     controlState = !controlState;
-    printGUI(); // печатаем на дисплее (названия настроек)
+    menuGUI(); // печатаем на дисплее (названия настроек)
   }
 
   else if (enc.turn()) { // если повернули (факт поворота)
@@ -720,11 +685,11 @@ void menuHandler() {
           case 3: vals[3] = constrain(vals[3], vals[2], 999); break; //maxV
           case 4: vals[4] = constrain(vals[4], 0, 1); break; // пищалка указателей поворота
           case 5: vals[5] = constrain(vals[5], 0, 1); // тест пищалки
-# ifdef buzzActive
+# if defined buzzActive
             digitalWrite(buzz, vals[5]);
 # elif defined buzzPassive
             switch (vals[5]) {
-              case 1: tone (buzz, 2000); break;
+              case 1: tone (buzz, buzzFrq); break;
               case 0: noTone (buzz); break;
             }
 # endif
@@ -760,13 +725,13 @@ void menuHandler() {
 #endif
         break;
     } // switch (controlState)
-    printGUI();
+    menuGUI();
   }
 }
 
 
 /* --печать интерфейса в меню настроек-- */
-void printGUI() {
+void menuGUI() {
   static int8_t screenPos = 0; // номер "экрана"
   static int8_t lastScreen = 0; // предыдущий номер "экрана"
 
