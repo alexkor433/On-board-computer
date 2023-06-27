@@ -2,7 +2,7 @@
   Настройки библиотек: EB_BETTER_ENC (установлен по умолчанию с версии 2.0 библиотеки), EB_HALFSTEP_ENC, EB_FAST, MAX6675_DELAY
   Пользовательские настройки находятся в Confihuration.h */
 
-#pragma message "Version 2.9.6"
+#pragma message "Version 2.9.6.1"
 #include <EEPROM.h>
 #include <GyverWDT.h>
 #include <LiquidCrystal_I2C.h>
@@ -12,7 +12,7 @@
 #include <GetVolt.h>
 #include <CPUTemperature.h>   // пин А7 невозможно больше использовать
 #include <Tachometer.h>
-#define EB_HALFSTEP_ENC       // режим для полушаговых энкодеров
+//#define EB_HALFSTEP_ENC       // режим для полушаговых энкодеров
 #define EB_FAST 60            // таймаут быстрого поворота, мс
 #include <EncButton.h>
 #include <GyverTimers.h>
@@ -39,11 +39,11 @@
 /*-------------------------------------------------------------------------------------------------------------------------*/
 
 /*для меню настроек*/
-#define LINES 2         // количество строк lcd
-#define FAST_STEP 10    // скорость изменения при быстром повороте
+#define LINES 2           // количество строк lcd
+#define FAST_STEP 10      // скорость изменения при быстром повороте
 #if defined withPiezo
 
-# define CRT_VALS 6      // номер параметра яркости светодиода в массиве vals
+# define CRT_VALS 6       // номер параметра яркости светодиода в массиве vals
 # if defined ecoRPM
 #  define SETTINGS_AMOUNT 9
 #  define ECO_RPM_VALS 8  // номер параметра включения eco-оборотов
@@ -89,8 +89,8 @@ volatile uint8_t m, h;              // время поездки - минуты,
 extern int __bss_end;
 extern void *__brkval;
 
-const byte rightcursor[8] = {B11000, B11100, B11110, B11111, B11111, B11110, B11100, B11000}; // стрелка направо >
-const byte leftcursor[8] = {B00011, B00111, B01111, B11111, B11111, B01111, B00111, B00011};  // стрелка налево <
+const byte rightcursor[8] = {B01000, B01100, B01110, B11111, B11111, B01110, B01100, B01000}; // стрелка направо >
+const byte leftcursor[8] = {B00010, B00110, B01110, B11111, B11111, B01110, B00110, B00010};  // стрелка налево <
 const byte degree[8] = {140, 146, 146, 140, 128, 128, 128, 128};       // символ градуса          _-____-_
 const byte battL[8] = {B00100, B11111, B10000, B10010, B10111, B10010, B10000, B11111};       // | +    - |
 const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B11111};       // |________|
@@ -118,9 +118,9 @@ const char name9[] PROGMEM = "ecoRPM note";
 
 // объявляем таблицу ссылок на параметры
 const char* const names[] PROGMEM = {
-  name1, name2, name3, name4,
+  name1, name2, name3, name4
 #if defined withPiezo
-  name5, name6
+  , name5, name6
 #endif
   , name7, name8
 #if defined ecoRPM
@@ -282,9 +282,9 @@ void loop() {
         static bool ls, TurnOff;
         bool l = digitalRead(turnpin1);     // переменная флага включения левого указателя. Потом по флагу работаем с проецированием на экран
         if (l || digitalRead(turnpin2)) {   // если какой-то из указателей загорелся
-          myTimer4 = (uint16_t)millis();    // запоминаем время для избежания наложения включений светодиода
-          ls = l;                           // запоминаемм, чтобы потом выключить нужную стрелку
           if (!TurnOff) {                   // для однократного выполнения кода:
+            myTimer4 = (uint16_t)millis();  // запоминаем время для избежания наложения включений светодиода
+            ls = l;                         // запоминаемм, чтобы потом выключить нужную стрелку
 #if defined withPiezo
             if (vals[4])
 # ifdef buzzActive
@@ -337,10 +337,7 @@ void loop() {
           static bool le;
           if ((uint16_t)millis() - myTimer4 > 1400 && (volt.low || volt.high || temp.high)) { // если какой-то из показателей превысил норму
             // управляем светодиодом, если прошло больше секунды с момента включения указателей поворота
-            switch (z) {
-              case 1: digitalWrite(ledpin, HIGH); break;
-              case 0: digitalWrite(ledpin, LOW); break;
-            }
+            digitalWrite(ledpin, z);
             le = z;
           } else if (le) {
             digitalWrite(ledpin, LOW);   // если произойдёт выход из прошлого if, и светодиод не выключится, этот код однократно выключит светодиод
@@ -519,9 +516,10 @@ void loop() {
 
 
 void sensorsProcessing() {
+  /* --ОБРАБОТКА ТАХОМЕТРА-- */
   static uint8_t tmr;
   uint8_t ms = (uint8_t)millis();
-  if (uint8_t(ms - tmr) > 100) {
+  if (uint8_t(ms - tmr) > 180) {
     tmr = ms;
     static uint16_t prevR;
 #if defined TwoCylinders
@@ -534,16 +532,21 @@ void sensorsProcessing() {
     if (!Hold && prevR != R) {
 #if defined ecoRPM
       if (vals[ECO_RPM_VALS])   // если разрешено в настройках
-        switch (R) {
-          case ecoInterval: digitalWrite(ecoledpin, HIGH);
-          default: digitalWrite(ecoledpin, LOW);
+        switch (R) {            // включаем светотодиод в эко-интервале
+          case ecoInterval: digitalWrite(ecoledpin, HIGH); break;
+          default: digitalWrite(ecoledpin, LOW); break;
         }
 #endif
       disp.displayInt(R);
-      prevR = R;              // запоминаем новое значение;
+      prevR = R;                // запоминаем новое значение
     }
+  }
 
-    /* --ОБРАБОТКА ВОЛЬТМЕТРА-- */
+  /* --ОБРАБОТКА ВОЛЬТМЕТРА-- */
+  static uint8_t tmrv;
+  uint8_t msv = (uint8_t)millis();
+  if (uint8_t(msv - tmrv) > 50) {
+    tmrv = msv;
     input_volt = firstbatt.getVolt(analogRead(analogpin1));
 #ifdef bufferBatt
     buff_input_volt = secondbatt.getVolt(analogRead(analogpin2));
@@ -600,11 +603,11 @@ void mainGUI() {
         lcd.print(input_volt);
 
 #if defined bufferBatt
-# if defined OneCylinder
-        lcd.setCursor(3, 1);    // выводим напряжение буферного аккумулятора под температурой
-        lcd.print(buff_input_volt);
-# endif
       }
+# if defined OneCylinder
+      lcd.setCursor(3, 1);    // выводим напряжение буферного аккумулятора под температурой
+      lcd.print(buff_input_volt);
+# endif
 #endif
     }
   }
@@ -612,9 +615,9 @@ void mainGUI() {
 
 /* --ПОЛУЧЕНИЕ ТЕМПЕРАТУРЫ ТЕРМОПАР-- */
 void thermocouple() {
-  t1 = thermo.readTemp() ? (thermo.getTempInt() - 2) : NAN;
+  t1 = thermo.readTemp() ? thermo.getTempInt() : NAN;
 #ifdef TwoCylinders
-  t2 = thermo2.readTemp() ? (thermo2.getTempInt() - 2) : NAN;
+  t2 = thermo2.readTemp() ? thermo2.getTempInt() : NAN;
   /*если температура больше заданной, поднимаем флаг*/
   temp.high = (t1 > vals[1] || t2 > vals[1]) ? true : false;
 #else
