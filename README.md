@@ -39,10 +39,20 @@
 
 Устройство на мотоцикле
 
+<details>
+<summary>старый БК</summary>
+
 ![Снимок экрана (322)](https://user-images.githubusercontent.com/98914596/152306161-d93440b4-e3fa-4f79-a25c-1ad9fa971339.png)
 
 ![Снимок экрана (544)](https://user-images.githubusercontent.com/98914596/199455337-e09b5fae-a4e7-4f53-92f3-4d579ebb58d6.png)
 
+</details>
+
+**Новое!**
+
+![IMG_20230718_124335](https://github.com/alexkor433/On-board-computer/assets/98914596/149abc90-cbc6-484e-8fcf-e5ab7f595097)
+
+Бортовой компьютер на печатной плате версии 2.0. Компактнее и лучше!
 
 <a id="possibilities"></a>
 ## Возможности данной системы
