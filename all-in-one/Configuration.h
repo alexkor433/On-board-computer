@@ -10,7 +10,7 @@
 #define SWITCH_ON_ANIMATION // Анимация при включении
 /*-----------------------------------------------------------*/
 
-#define ECO_INTERVAL 2200 ... 3000 // интервал эко режима RPM
+#define ECO_INTERVAL 2300 ... 3000 // интервал эко режима RPM
 // LCD1602
 #define LCD_ADDR 0x27 // i2c адрес (изменена скорость тактирования в файле cpp, low speed mode)
 // MAX6675

@@ -2,7 +2,7 @@
   Настройки библиотек: EB_BETTER_ENC (установлен по умолчанию с версии 2.0 библиотеки), EB_HALFSTEP_ENC, EB_FAST, MAX6675_DELAY
   Пользовательские настройки находятся в Confihuration.h */
 
-#pragma message "Version 3.0.0"
+#pragma message "Version 3.1.0"
 #include <EEPROM.h>
 #include <GyverWDT.h>
 #include <LiquidCrystal_I2C.h>
@@ -12,8 +12,9 @@
 #include <GetVolt.h>
 #include <CPUTemperature.h>   // пин А7 невозможно больше использовать
 #include <Tachometer.h>
-//#define EB_HALFSTEP_ENC       // режим для полушаговых энкодеров
-#define EB_FAST 60            // таймаут быстрого поворота, мс
+#define EB_NO_COUNTER         // отключить счётчик энкодера
+#define EB_NO_BUFFER          // отключить буферизацию (т.к. обработка энкодера осуществляется не в прерывании)
+#define EB_FAST_TIME 60       // таймаут быстрого поворота, мс
 #include <EncButton.h>
 #include <GyverTimers.h>
 
@@ -74,7 +75,7 @@ GyverMAX6675<SCK_PIN_2, SO_PIN_2, CS_PIN_2> thermo2;
 LiquidCrystal_I2C lcd(LCD_ADDR, 16, LINES);           // адрес, сегменты и строки дисплея
 GyverTM1637 disp(CLK, DIO);
 Tachometer tacho;
-EncButton<EB_TICK, A, B, KEY_PIN> enc(INPUT);         // энкодер с кнопкой <A, B, KEY> (A, B, KEY - номера пинов)
+EncButtonT<A, B, KEY_PIN> enc(INPUT, INPUT);          // энкодер с кнопкой <A, B, KEY> (A, B, KEY - номера пинов)
 GetVolt firstbatt (R1, R2, CALIBRATION_1);
 #ifdef BUFFER_BATTERY
 GetVolt secondbatt (R3, R4, CALIBRATION_2);
@@ -213,9 +214,10 @@ void setup() {
   lcd.backlight();
 #ifdef SWITCH_ON_ANIMATION
   byte ON[4] = {0, 0, 0, 0};
-  disp.twist(ON, 27); // анимация при включении
+  disp.twist(ON, 27);             // анимация при включении
   disp.clear();
 #endif
+  //enc.setEncType(EB_STEP2);       // установка типа энкодера
   myTimer4 = (uint16_t)millis();
 }
 
@@ -242,7 +244,7 @@ void loop() {
   static bool L;      // L - обновление значений счётчика моточасов
 
   if (enc.tick()) {   // обработчик энкодера с кнопкой
-    if (enc.held()) { // смена режимов показа на дисплее
+    if (enc.hold()) { // смена режимов показа на дисплее
       Hold = !Hold;
       switch (Hold) {
         case 0:
@@ -643,7 +645,7 @@ void thermocouple() {
 /* --выводим версию программы, напряжение буферного аккумулятора (если есть) и время поездки-- */
 void isButtonSingle() {             // действия после ОДИНОЧНОГО нажатия кнопки
   digitalWrite(LED_PIN, LOW);
-  disp.displayByte(_U, _3, _0, _0); // выводим версию программы на дисплей
+  disp.displayByte(_U, _3, _1, _0); // выводим версию программы на дисплей
   lcd.clear();
   lcd.print(F("Elapsed T: "));
   lcd.print(h);
@@ -706,7 +708,11 @@ void lcdUpdate() {
 
 void menuHandler() {
   // если отключили питание в меню, то сохраняем настройки
-  if (volt.lowMH) EEPROM.put(4, vals);
+  if (volt.lowMH) {
+    noInterrupts();            // запрет прерываний для максимально быстрой записи в EEPROM
+    EEPROM.put(4, vals);
+    interrupts();              // разрешаем прерывания
+  }
   static uint8_t buzzTmr;
 
 #if defined WITH_PIEZO
