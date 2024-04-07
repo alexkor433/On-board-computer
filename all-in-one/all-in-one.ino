@@ -1,8 +1,8 @@
 /*версия для бортового компьютера на плате
-  Настройки библиотек: EB_BETTER_ENC (установлен по умолчанию с версии 2.0 библиотеки), EB_HALFSTEP_ENC, EB_FAST, MAX6675_DELAY
+  Настройки библиотек: setEncType(), EB_FAST_TIME, MAX6675_DELAY
   Пользовательские настройки находятся в Confihuration.h */
 
-#pragma message "Version 3.1.0"
+#pragma message "Version 3.1.3"
 #include <EEPROM.h>
 #include <GyverWDT.h>
 #include <LiquidCrystal_I2C.h>
@@ -12,6 +12,8 @@
 #include <GetVolt.h>
 #include <CPUTemperature.h>   // пин А7 невозможно больше использовать
 #include <Tachometer.h>
+#define EB_NO_FOR             // отключить поддержку pressFor/holdFor/stepFor и счётчик степов
+#define EB_NO_CALLBACK        // отключить обработчик событий attach
 #define EB_NO_COUNTER         // отключить счётчик энкодера
 #define EB_NO_BUFFER          // отключить буферизацию (т.к. обработка энкодера осуществляется не в прерывании)
 #define EB_FAST_TIME 60       // таймаут быстрого поворота, мс
@@ -21,7 +23,7 @@
 #include "Configuration.h"
 
 /*--Предупраждения о несовместимости определений--*/
-/*--------------------------------------------------------!НЕ КОММЕНТИРОВАТЬ!----------------------------------------------*/
+/*==================================================!НЕ КОММЕНТИРОВАТЬ!==================================================*/
 #if defined BUZZER_PASSIVE && defined BUZZER_ACTIVE
 # error "incompatible definitions BUZZER_PASSIVE & BUZZER_ACTIVE" // нельзя одновременно дефайнить BUZZER_ACTIVE и BUZZER_PASSIVE
 #elif ! defined BUZZER_PASSIVE && ! defined BUZZER_ACTIVE
@@ -37,14 +39,7 @@
 #if defined BUZZER_PASSIVE || defined BUZZER_ACTIVE             // с пьезоэлементом
 # define WITH_PIEZO
 #endif
-/*-------------------------------------------------------------------------------------------------------------------------*/
-
-#define FPSTR(pstr) (const __FlashStringHelper*)(pstr)
-
-/*для меню настроек*/
-#define LINES 2           // количество строк lcd
-#define FAST_STEP 10      // скорость изменения при быстром повороте
-
+/*------------------------------------------------служебные определения--------------------------------------------------*/
 #if defined WITH_PIEZO
 
 # define CRT_VALS 5       // номер параметра яркости светодиода в массиве vals
@@ -67,6 +62,16 @@
 
 #endif
 
+/*--------- для работы с PGM строками -----------*/
+#define FPSTR(pstr) (const __FlashStringHelper*)(pstr)
+
+/*=======================================================================================================================*/
+
+/*-------------- для меню настроек --------------*/
+#define LINES 2           // количество строк lcd
+#define FAST_STEP 10      // скорость изменения при быстром повороте
+
+/*================= БИБЛИОТЕКИ ==================*/
 CPUTemperature temperature(TEMP_OFFSET, TEMP_GAIN);
 GyverMAX6675<SCK_PIN, SO_PIN, CS_PIN> thermo;         // указываем пины в порядке SCK SO CS
 #ifdef TWO_CYLINDERS
@@ -80,7 +85,7 @@ GetVolt firstbatt (R1, R2, CALIBRATION_1);
 #ifdef BUFFER_BATTERY
 GetVolt secondbatt (R3, R4, CALIBRATION_2);
 #endif
-
+/*================= ПЕРЕМЕННЫЕ ==================*/
 float input_volt = 0.0, buff_input_volt = 0.0;
 
 bool Hold, bp;
@@ -89,29 +94,29 @@ float e_hours, maxV, minV, minVMH;  // моточасы, максимально�
 uint16_t myTimer4;
 volatile uint8_t m, h;              // время поездки - минуты, часы объявляем volatile, т.к. обрабатываются прерыванием
 
-// для показа свободной оперативки
+/*------- для показа свободной оперативки --------*/
 extern int __bss_end;
 extern void *__brkval;
 
-/*---для загрузки в LCD---*/
-const byte rightcursor[8] = {B01000, B01100, B01110, B11111, B11111, B01110, B01100, B01000}; // стрелка направо >
-const byte leftcursor[8] = {B00010, B00110, B01110, B11111, B11111, B01110, B00110, B00010};  // стрелка налево <
+/*-------------- для загрузки в LCD --------------*/
+const byte rightcursor[8] = {B01000, B01100, B01110, B11111, B11111, B01110, B01100, B01000}; // стрелка вправо >
+const byte leftcursor[8] = {B00010, B00110, B01110, B11111, B11111, B01110, B00110, B00010};  // стрелка влево <
 const byte degree[8] = {140, 146, 146, 140, 128, 128, 128, 128};            // символ градуса     _-____-_
 const byte battL[8] = {B00100, B11111, B10000, B10010, B10111, B10010, B10000, B11111};       // | +    - |
 const byte battR[8] = {B00100, B11111, B00001, B00001, B11101, B00001, B00001, B11111};       // |________|
-/*---для избежания повторения строк---*/
+/*-------- для избежания повторения строк --------*/
 const char voidStr[] PROGMEM = "        ";
 const char lowVolt[] PROGMEM = "LOWvolt ";
 const char overVolt[] PROGMEM = "OVERvolt";
 const char degC[] PROGMEM = "\1C";
 const char degCgap[] PROGMEM = "\1C ";
-
+/*---------- гамма-коррекция светодиода ----------*/
 static const uint8_t CRTgammaPGM[32] PROGMEM = {
   0, 1, 3, 5, 6, 8, 12, 14, 17, 21, 25, 30, 35, 40, 46, 53,
   59, 67, 75, 84, 94, 103, 115, 127, 139, 153, 167, 182, 199, 216, 235, 255
 };
 
-/*для обработки энкодера и меню в LCD1602*/
+/*--- для обработки энкодера и меню в LCD1602 ---*/
 // названия параметров (max 12 букв)
 const char name1[] PROGMEM = "DSBrightness";
 const char name2[] PROGMEM = "MaxCylTemp";
@@ -126,7 +131,7 @@ const char name7[] PROGMEM = "MotorH-to-0";
 const char name8[] PROGMEM = "ecoRPM note";
 #endif
 
-// объявляем таблицу ссылок на параметры
+/*--------- таблица ссылок на параметры ---------*/
 const char* const names[] PROGMEM = {
   name1, name2, name3, name4
 #if defined WITH_PIEZO
@@ -138,12 +143,12 @@ const char* const names[] PROGMEM = {
 #endif
 };
 
-
+/*---------------- меню настроек ----------------*/
 int vals[SETTINGS_AMOUNT];  // массив параметров для сохранения настроек
 int8_t arrowPos = 0;
 bool controlState = 0;      // для изменения режима в меню
 
-// структуры для удобной работы с флагами
+/*--- структуры для удобной работы с флагами ---*/
 struct {
   bool high;
   bool low;
@@ -158,7 +163,7 @@ struct {
   bool high;
 } temp;
 
-/* ---ОПИСАНИЕ ФУНКЦИЙ--- */
+/*============== ОПИСАНИЕ ФУНКЦИЙ ===============*/
 inline __attribute__((always_inline)) void sensorsProcessing();
 inline __attribute__((always_inline)) void mainGUI();
 inline __attribute__((always_inline)) void thermocouple();
@@ -217,7 +222,7 @@ void setup() {
   disp.twist(ON, 27);             // анимация при включении
   disp.clear();
 #endif
-  //enc.setEncType(EB_STEP2);       // установка типа энкодера
+  enc.setEncType(EB_STEP2);       // установка типа энкодера
   myTimer4 = (uint16_t)millis();
 }
 
@@ -251,9 +256,12 @@ void loop() {
           EEPROM.put(4, vals);          // запись при переходе ИЗ режима настроек
           minV = float(vals[2]) * 0.1;  // делим на 10, чтобы получить флоат с 1 знаком после точки
           maxV = float(vals[3]) * 0.1;
-          minVMH = minV - 0.6;          // из мин. напряжения вычитаем 0.8 вольт, чтобы моточасы записывались только при выключении
+          minVMH = minV - 0.6;          // из мин. напряжения вычитаем 0.6 вольт, чтобы моточасы записывались только при выключении
           digitalWrite (LED_PIN, LOW);
           disp.clear();
+#ifdef BUFFER_BATTERY
+          bufVolt.low = false;
+#endif
           volt.low = false;
           volt.high = false;
           temp.high = false;
@@ -280,36 +288,47 @@ void loop() {
 
     case 0: {                   // действия, которые выполняются не в режиме настроек !Hold
         /* --ОБРАБОТКА ОДИНАРНОГО И ДВОЙНОГО НАЖАТИЙ-- */
-        if (enc.hasClicks(1)) isButtonSingle();
-        else if (enc.hasClicks(2)) {
-          L = true;             // для обновления моточасов при двойном нажатии
-          isButtonDouble();
+        if (enc.hasClicks()) {
+          switch (enc.getClicks()) {
+            case 1: isButtonSingle(); break;
+            case 2: L = true;               // для обновления моточасов при двойном нажатии
+              isButtonDouble();
+              break;
+          }
         }
 
         /* --ОБРАБОТКА УКАЗАТЕЛЕЙ ПОВОРОТА-- */
-        static bool ls, TurnOff;
-        bool l = digitalRead(TURN_PIN_1);   // переменная флага включения левого указателя. Потом по флагу работаем с проецированием на экран
-        if (l || digitalRead(TURN_PIN_2)) { // если какой-то из указателей загорелся
+        static bool TurnOff;
+        // флаг включения левого указателя
+        bool l = digitalRead(TURN_PIN_1);
+        uint8_t Ind = l + digitalRead(TURN_PIN_2);
+        if (Ind) {                          // если какой-то из указателей загорелся
           if (!TurnOff) {                   // для однократного выполнения кода:
             myTimer4 = (uint16_t)millis();  // запоминаем время для избежания наложения включений светодиода
-            ls = l;                         // запоминаемм, чтобы потом выключить нужную стрелку
-#if defined WITH_PIEZO
-            if (vals[4])
-# ifdef BUZZER_ACTIVE
-              digitalWrite (BUZZER_PIN, HIGH);    // пищим если разрешено в настройках
-# elif defined BUZZER_PASSIVE
-              tone (BUZZER_PIN, BUZZER_FREQUENCY);
-# endif
-#endif
             digitalWrite(LED_PIN, HIGH);
-            switch (l) {
-              case 1:
+            switch (Ind) {
+              case 2:                       // включение обоих указателей поворота (режим аварийки)
                 lcd.setCursor(8, 1);
                 lcd.print(char(3));
-                break;
-              case 0:
-                lcd.setCursor(9, 1);
                 lcd.print(char(2));
+                break;
+              default:
+#if defined WITH_PIEZO
+                if (vals[4])
+# ifdef BUZZER_ACTIVE
+                  digitalWrite (BUZZER_PIN, HIGH);    // пищим если разрешено в настройках
+# elif defined BUZZER_PASSIVE
+                  tone (BUZZER_PIN, BUZZER_FREQUENCY);
+# endif
+#endif
+                if (l) {
+                  lcd.setCursor(8, 1);
+                  lcd.print(char(3));
+                }
+                else {
+                  lcd.setCursor(9, 1);
+                  lcd.print(char(2));
+                }
                 break;
             }
             TurnOff = true;     // флаг для однократного выключения
@@ -326,11 +345,8 @@ void loop() {
 # endif
 #endif
           digitalWrite(LED_PIN, LOW);
-          switch (ls) {
-            case 1: lcd.setCursor(8, 1); break;
-            case 0: lcd.setCursor(9, 1); break;
-          }
-          lcd.print(F(" "));    // выключаем нужную стрелку
+          lcd.setCursor(8, 1);
+          lcd.print(F("  "));    // выключаем нужную стрелку
         }
 
         /* --ВЫВОД ПРЕДУПРЕЖДЕНИЙ-- */
@@ -342,12 +358,12 @@ void loop() {
           z = !z;
           /* --управление светодиодом-- */
           static bool le;
-          if ((uint16_t)millis() - myTimer4 > 1400 && (volt.low || volt.high || temp.high)) { // если какой-то из показателей превысил норму
+          if ((uint16_t)millis() - myTimer4 > 2000 && (volt.low || volt.high || temp.high)) { // если какой-то из показателей превысил норму
             // управляем светодиодом, если прошло больше секунды с момента включения указателей поворота
             digitalWrite(LED_PIN, z);
             le = z;
           } else if (le) {
-            digitalWrite(LED_PIN, LOW);   // если произойдёт выход из прошлого if, и светодиод не выключится, этот код однократно выключит светодиод
+            digitalWrite(LED_PIN, LOW); // если произойдёт выход из прошлого if, и светодиод не выключится, этот код однократно выключит светодиод
             le = false;
           }
 
@@ -408,7 +424,7 @@ void loop() {
           switch (z) {
             case 1:
               if (!flag || f) {   // печатаем один раз (если не печатали до этого)
-                lcd.print(FPSTR(overVolt));
+                lcd.print(F("OVERheat"));
                 flag = true;
                 f = false;
               }
@@ -485,7 +501,7 @@ void loop() {
 
         /* --если кол-во оборотов больше 5500, то включать, выключать светодиод-- */
 #ifdef RPM_WARNING
-        if ((uint16_t)millis() - myTimer4 > 1400 && R >= 5500) {
+        if ((uint16_t)millis() - myTimer4 > 2000 && R >= 5500) {
           static uint16_t myTimer;
           uint16_t ms = (uint16_t)millis();
           if (ms - myTimer >= 400) {
@@ -497,7 +513,7 @@ void loop() {
         }
 #endif
       }
-      break; //!Конец switch(Hold)-case: 0!
+      // !Конец switch(Hold)-case: 0!
   }
 
 
@@ -573,7 +589,7 @@ void sensorsProcessing() {
   }
 }
 
-
+/* ---ОТРИСОВКА ОСНОВНОГО ИНТЕРФЕЙСА--- */
 void mainGUI() {
   static uint16_t tmr;
   uint16_t ms = (uint16_t)millis();
@@ -645,7 +661,7 @@ void thermocouple() {
 /* --выводим версию программы, напряжение буферного аккумулятора (если есть) и время поездки-- */
 void isButtonSingle() {             // действия после ОДИНОЧНОГО нажатия кнопки
   digitalWrite(LED_PIN, LOW);
-  disp.displayByte(_U, _3, _1, _0); // выводим версию программы на дисплей
+  disp.displayByte(_U, _3, _1, _3); // выводим версию программы на дисплей
   lcd.clear();
   lcd.print(F("Elapsed T: "));
   lcd.print(h);
@@ -705,7 +721,7 @@ void lcdUpdate() {
   lcd.print(char(5));   // правая половина
 }
 
-
+/* ---ОБРАБОТЧИК МЕНЮ НАСТРОЕК--- */
 void menuHandler() {
   // если отключили питание в меню, то сохраняем настройки
   if (volt.lowMH) {
@@ -720,86 +736,88 @@ void menuHandler() {
   if (bp) beepTick(&buzzTmr);  // вызываем функцию отключения пьезоэлемента
 #endif
 
-  if (enc.click()) {
+  switch (enc.action()) {
+    case EB_CLICK:
 #if defined WITH_PIEZO
-    beep(&buzzTmr);
+      beep(&buzzTmr);
 #endif
-    controlState = !controlState;
-    menuGUI();                                  // печатаем на дисплее (названия настроек)
-  }
+      controlState = !controlState;
+      menuGUI();                                  // печатаем на дисплее (названия настроек)
+      break;
 
-  else if (enc.turn()) {                        // если повернули (факт поворота)
+    case EB_TURN:                                 // если повернули (факт поворота)
 #if defined WITH_PIEZO
-    beep(&buzzTmr);
+      beep(&buzzTmr);
 #endif
-    switch (controlState) {
-      case 0:                                   // управляем ВЫБОРОМ НАСТРОЕК
-        arrowPos += enc.dir();                  // двигаем курсор. dir возвращает 1 или -1
-        arrowPos = constrain(arrowPos, 0, SETTINGS_AMOUNT - 1); // ограничиваем позицию стрелки
-        break;
+      switch (controlState) {
+        case 0:                                   // управляем ВЫБОРОМ НАСТРОЕК
+          arrowPos += enc.dir();                  // двигаем курсор. dir возвращает 1 или -1
+          arrowPos = constrain(arrowPos, 0, SETTINGS_AMOUNT - 1); // ограничиваем позицию стрелки
+          break;
 
-      case 1:                                   // управляем ПАРАМЕТРАМИ
-        // меняем параметры по позиции стрелки
-        switch (enc.dir()) {                    // если поворот быстрый, прибавляем FAST_STEP, иначе прибавляем 1
-          case 1:  vals[arrowPos] += enc.fast() ? FAST_STEP : 1; break;
-          case -1: vals[arrowPos] += enc.fast() ? -FAST_STEP : -1; break;
-        }
+        case 1:                                   // управляем ПАРАМЕТРАМИ
+          // меняем параметры по позиции стрелки
+          switch (enc.dir()) {                    // если поворот быстрый, прибавляем FAST_STEP, иначе прибавляем 1
+            case 1:  vals[arrowPos] += enc.fast() ? FAST_STEP : 1; break;
+            case -1: vals[arrowPos] += enc.fast() ? -FAST_STEP : -1; break;
+          }
 
 #if defined WITH_PIEZO // для системы с пьезоэлементом
-        switch (arrowPos) {   // ограничиваем только изменённые настройки
-          case 0: vals[0] = constrain(int8_t(vals[0]), 0, 7); break;  // ограничиваем парметр яркости дисплея
-          case 1: vals[1] = constrain(vals[1], 0, 800); break;        // параметр максимальной температуры цилиндров
-          case 2: vals[2] = constrain(vals[2], 0, vals[3]); break;    // minV   параметры int - потом делятся на 10 и получаются float
-          case 3: vals[3] = constrain(vals[3], vals[2], 999); break;  // maxV
-          case 4: vals[4] = constrain(bool(vals[4]), 0, 1); break;    // пищалка указателей поворота
-          case 5: vals[5] = constrain(int8_t(vals[5]), 0, 31);        // параметр яркости светодиода
-            analogWrite (LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[5]])));  // CRT коррекция с 32 уровнями
+          switch (arrowPos) {   // ограничиваем только изменённые настройки
+            case 0: vals[0] = constrain(int8_t(vals[0]), 0, 7); break;  // ограничиваем парметр яркости дисплея
+            case 1: vals[1] = constrain(vals[1], 0, 800); break;        // параметр максимальной температуры цилиндров
+            case 2: vals[2] = constrain(vals[2], 0, vals[3]); break;    // minV   параметры int - потом делятся на 10 и получаются float
+            case 3: vals[3] = constrain(vals[3], vals[2], 999); break;  // maxV
+            case 4: vals[4] = constrain(bool(vals[4]), 0, 1); break;    // пищалка указателей поворота
+            case 5: vals[5] = constrain(int8_t(vals[5]), 0, 31);        // параметр яркости светодиода
+              analogWrite (LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[5]])));  // CRT коррекция с 32 уровнями
 # ifdef ECO_RPM
-            analogWrite (ECO_LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[5]])));
+              analogWrite (ECO_LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[5]])));
 # endif
-            break;
-          case 6: if (vals[6]) { // если равно единице обнуляем счётчик моточасов
-              vals[6] = 0;
-              e_hours = 0;
-              EEPROM.put(0, e_hours);
-            }
-            break;
+              break;
+            case 6: if (vals[6]) { // если равно единице обнуляем счётчик моточасов
+                vals[6] = 0;
+                e_hours = 0;
+                EEPROM.put(0, e_hours);
+              }
+              break;
 # ifdef ECO_RPM
-          case 7: vals[7] = constrain(bool(vals[7]), 0, 1); break; // включение предупреждения eco-оборотов
+            case 7: vals[7] = constrain(bool(vals[7]), 0, 1); break; // включение предупреждения eco-оборотов
 # endif
-        }
+          }
 
 #elif defined NO_PIEZO// для системы БЕЗ пьезоэлемента:
-        switch (arrowPos) {
-          case 0: vals[0] = constrain(int8_t(vals[0]), 0, 7); break;
-          case 1: vals[1] = constrain(vals[1], 0, 800); break;
-          case 2: vals[2] = constrain(vals[2], 0, vals[3]); break;
-          case 3: vals[3] = constrain(vals[3], vals[2], 999); break;
-          case 4: vals[4] = constrain(int8_t(vals[4]), 0, 31); // параметр яркости светодиода
-            analogWrite (LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[4]])));
+          switch (arrowPos) {
+            case 0: vals[0] = constrain(int8_t(vals[0]), 0, 7); break;
+            case 1: vals[1] = constrain(vals[1], 0, 800); break;
+            case 2: vals[2] = constrain(vals[2], 0, vals[3]); break;
+            case 3: vals[3] = constrain(vals[3], vals[2], 999); break;
+            case 4: vals[4] = constrain(int8_t(vals[4]), 0, 31); // параметр яркости светодиода
+              analogWrite (LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[4]])));
 # ifdef ECO_RPM
-            analogWrite (ECO_LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[4]])));
+              analogWrite (ECO_LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[4]])));
 # endif
-            break;
-          case 5: if (vals[5]) {
-              vals[5] = 0;
-              e_hours = 0;
-              EEPROM.put(0, e_hours);
-            }
-            break;
+              break;
+            case 5: if (vals[5]) {
+                vals[5] = 0;
+                e_hours = 0;
+                EEPROM.put(0, e_hours);
+              }
+              break;
 # ifdef ECO_RPM
-          case 6: vals[6] = constrain(bool(vals[6]), 0, 1); break;
+            case 6: vals[6] = constrain(bool(vals[6]), 0, 1); break;
 # endif
-        }
+          }
 #endif
-        break;
-    } // switch (controlState)
-    menuGUI();
-  }
+          break;
+      } // switch (controlState)
+      menuGUI();
+      break;
+  } // switch (enc.action())
 }
 
 
-/* --печать интерфейса в меню настроек-- */
+/* ----ОТРИСОВКА ИНТЕРФЕЙСА В МЕНЮ НАСТРОЕК---- */
 void menuGUI() {
   static int8_t screenPos = 0;                    // номер "экрана"
   static int8_t lastScreen = 0;                   // предыдущий номер "экрана"
@@ -825,7 +843,7 @@ void menuGUI() {
   }
 }
 
-// очень хитрая функция для печати из PROGMEM
+/* ---очень хитрая ФУНКЦИЯ ДЛЯ ПЕЧАТИ ИЗ PROGMEM--- */
 void printFromPGM(int charMap) {
   uint8_t ptr = pgm_read_word(charMap);     // получаем адрес из таблицы ссылок
   while (pgm_read_byte(ptr) != NULL) {      // всю строку до нулевого символа
@@ -839,7 +857,7 @@ void smartArrow(bool state1) {  // рисует стрелку, галку ил�
   lcd.write(state1 ? (controlState ? 62 : 126) : 32);
 }
 
-
+/* ---ФУНКЦИИ ЗВУКОВОЙ ИНДИКАЦИИ В МЕНЮ НАСТРОЕК--- */
 void beep(uint8_t* ms) {
   bp = true;                    // флаг выключения
   *ms = (uint8_t)millis();
@@ -866,8 +884,8 @@ void beepTick(uint8_t* ms) {
   }
 }
 
-
-uint16_t memoryFree() { // функция вывода свободной оперативки
+/* ---ФУНКЦИЯ ВЫВОДА СВОБОДНОЙ ОПЕРАТИВКИ--- */
+uint16_t memoryFree() {
   uint16_t freeValue;
   if ((uint16_t)__brkval == 0)
     freeValue = ((uint16_t)&freeValue) - ((uint16_t)&__bss_end);
