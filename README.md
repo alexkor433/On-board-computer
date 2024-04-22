@@ -77,7 +77,35 @@
  *конфигурируется определениями (define)
  <a id="settings"></a>
 ## Настройки в программе
-- с версии *2.9.5.1* находятся в файле `configuration.h`
+### Рекомендуется использовать avr-gcc версии 13.2.0
+
+<details>
+<summary>Замена компилятора свежей версией</summary>
+
+1. Загружаем [последнюю версию](https://github.com/ZakKemble/avr-gcc-builds/releases) компилятора
+2. При использовании стандартного ядра (Arduino IDE 1.8.19):
+     - Переходим в папку Arduino IDE:
+     - Далее в `hardware/tools`
+     - Вырезаем папку `avr` и копируем в любое другое место
+     - Распаковываем ранее скачанный архив с компилятором в `hardware/tools` и переименовываем в `avr`
+     - Копируем файлы `bin/avrdude.exe`, `builtin_tools_versions.txt` и папку `etc` из старой папки `avr` в новую
+     - Готово!
+3. При использовании GyverCore: 
+     - Переходим в папку C:\Users\PC\AppData\Local\Arduino15\packages\GyverCore\hardware\avr\2.0.4\tools\
+     - Распаковываем ранее скачанный архив и переименовываем в `avr-gcc13`
+     - Переходим в папку C:\Users\PC\AppData\Local\Arduino15\packages\GyverCore\hardware\avr\2.0.4
+     - Открываем файл `boards.txt`, находим секцию ## COMPILER ## и в её конец дополнительно вставляем:
+     ```
+     nano.menu.compiler_version.avrgcc13=AVR-GCC v13.2.0 [Warning!]
+     nano.menu.compiler_version.avrgcc13.compiler.path={runtime.platform.path}/tools/avr-gcc13/bin/
+     ```
+     - После этого в меню настройки ядра появится дополнительный пункт выбора компилятора
+     - Готово!
+     > *Примечание. Если версия компилятора отлична от v13.2.0, выполняются аналогичные действия, меняются только названия папок и заголовка в `boards.txt`*
+
+</details>
+
+- с версии *2.9.5.1* настройки находятся в файле `configuration.h`
 
 Настройка типа энкодера setEncType(тип):
 - `EB_STEP4_LOW` - активный низкий сигнал (подтяжка к VCC). Полный период (4 фазы) за один щелчок. *Установлен по умолчанию*
@@ -88,7 +116,7 @@
 Настройки библиотек: EB_FAST_TIME, MAX6675_DELAY
 <a id="versions"></a>
 ## Версии
-`старые версии находятся в LOG-versions.md. Они не предназначены для системы на плате`
+`Полный список версий находятся в LOG-versions.md`
 <details>
 <summary>Старые</summary>
 
