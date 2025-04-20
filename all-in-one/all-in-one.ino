@@ -2,7 +2,7 @@
   Настройки библиотек: setEncType(), EB_FAST_TIME, MAX6675_DELAY
   Пользовательские настройки находятся в Confihuration.h */
 
-#pragma message "Version 3.1.4"
+#pragma message "Version 3.1.3"
 #include <EEPROM.h>
 #include <GyverWDT.h>
 #include <LiquidCrystal_I2C.h>
@@ -172,7 +172,7 @@ inline __attribute__((always_inline)) void isButtonDouble();
 void lcdUpdate();
 inline __attribute__((always_inline)) void menuHandler();
 void menuGUI();
-inline __attribute__((always_inline)) void printFromPGM(const char* const* charMap);
+inline __attribute__((always_inline)) void printFromPGM(int charMap);
 inline __attribute__((always_inline)) void smartArrow(bool state1);
 void beep(uint8_t* ms);
 inline __attribute__((always_inline)) void beepTick(uint8_t* ms);
@@ -184,12 +184,12 @@ void setup() {
   Watchdog.enable(RESET_MODE, WDT_PRESCALER_512); // режим сброса при зависании, таймаут 4 сек.
 
   lcd.init();
-  gio::mode(LED_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
 #ifdef ECO_RPM
-  gio::mode(ECO_LED_PIN, OUTPUT);
+  pinMode(ECO_LED_PIN, OUTPUT);
 #endif
 #ifdef BUZZER_ACTIVE
-  gio::mode(BUZZER_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
 #endif
 
   analogPrescaler(128);               // !!!ВНИМАНИЕ предделитель АЦП 128 - наивысшая точность (при использовании GyverCore)
@@ -257,7 +257,7 @@ void loop() {
           minV = float(vals[2]) * 0.1;  // делим на 10, чтобы получить флоат с 1 знаком после точки
           maxV = float(vals[3]) * 0.1;
           minVMH = minV - 0.6;          // из мин. напряжения вычитаем 0.6 вольт, чтобы моточасы записывались только при выключении
-          gio::write(LED_PIN, LOW);
+          digitalWrite (LED_PIN, LOW);
           disp.clear();
 #ifdef BUFFER_BATTERY
           bufVolt.low = false;
@@ -268,9 +268,9 @@ void loop() {
           lcdUpdate();
           break;
         case 1:           // при переходе в режим настройки
-          analogWrite(LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[CRT_VALS]])));
+          analogWrite (LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[CRT_VALS]])));
 #if defined ECO_RPM
-          analogWrite(ECO_LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[CRT_VALS]])));
+          analogWrite (ECO_LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[CRT_VALS]])));
 #endif
           disp.displayByte(_t, _u, _n, _e);
           lcd.clear();
@@ -291,8 +291,7 @@ void loop() {
         if (enc.hasClicks()) {
           switch (enc.getClicks()) {
             case 1: isButtonSingle(); break;
-            case 2:
-              L = true;         // для обновления моточасов при двойном нажатии
+            case 2: L = true;               // для обновления моточасов при двойном нажатии
               isButtonDouble();
               break;
           }
@@ -301,12 +300,12 @@ void loop() {
         /* --ОБРАБОТКА УКАЗАТЕЛЕЙ ПОВОРОТА-- */
         static bool TurnOff;
         // флаг включения левого указателя
-        bool l = gio::read(TURN_PIN_1);
-        uint8_t Ind = l + gio::read(TURN_PIN_2);
+        bool l = digitalRead(TURN_PIN_1);
+        uint8_t Ind = l + digitalRead(TURN_PIN_2);
         if (Ind) {                          // если какой-то из указателей загорелся
           if (!TurnOff) {                   // для однократного выполнения кода:
             myTimer4 = (uint16_t)millis();  // запоминаем время для избежания наложения включений светодиода
-            gio::write(LED_PIN, HIGH);
+            digitalWrite(LED_PIN, HIGH);
             switch (Ind) {
               case 2:                       // включение обоих указателей поворота (режим аварийки)
                 lcd.setCursor(8, 1);
@@ -317,7 +316,7 @@ void loop() {
 #if defined WITH_PIEZO
                 if (vals[4])
 # ifdef BUZZER_ACTIVE
-                  gio::write(BUZZER_PIN, HIGH);    // пищим если разрешено в настройках
+                  digitalWrite (BUZZER_PIN, HIGH);    // пищим если разрешено в настройках
 # elif defined BUZZER_PASSIVE
                   tone (BUZZER_PIN, BUZZER_FREQUENCY);
 # endif
@@ -340,12 +339,12 @@ void loop() {
 #if defined WITH_PIEZO
           if (vals[4])
 # ifdef BUZZER_ACTIVE
-            gio::write(BUZZER_PIN, LOW);
+            digitalWrite (BUZZER_PIN, LOW);
 # elif defined BUZZER_PASSIVE
             noTone(BUZZER_PIN);
 # endif
 #endif
-          gio::write(LED_PIN, LOW);
+          digitalWrite(LED_PIN, LOW);
           lcd.setCursor(8, 1);
           lcd.print(F("  "));    // выключаем нужную стрелку
         }
@@ -361,10 +360,10 @@ void loop() {
           static bool le;
           if ((uint16_t)millis() - myTimer4 > 2000 && (volt.low || volt.high || temp.high)) { // если какой-то из показателей превысил норму
             // управляем светодиодом, если прошло больше секунды с момента включения указателей поворота
-            gio::toggle(LED_PIN);
+            digitalWrite(LED_PIN, z);
             le = z;
           } else if (le) {
-            gio::write(LED_PIN, LOW);   // если произойдёт выход из прошлого if, и светодиод не выключится, этот код однократно выключит светодиод
+            digitalWrite(LED_PIN, LOW); // если произойдёт выход из прошлого if, и светодиод не выключится, этот код однократно выключит светодиод
             le = false;
           }
 
@@ -506,13 +505,15 @@ void loop() {
           static uint16_t myTimer;
           uint16_t ms = (uint16_t)millis();
           if (ms - myTimer >= 400) {
+            static bool j;
             myTimer = ms;
-            gio::toggle(LED_PIN);
+            j = !j;
+            digitalWrite(LED_PIN, j);
           }
         }
 #endif
       }
-	  break;
+      break;
       // !Конец switch(Hold)-case: 0!
   }
 
@@ -528,7 +529,7 @@ void loop() {
     EEPROM.get(0, e_hours);         // читаем из памяти
     sec2 = millis();                // запоминаем текущее время
     // разницу настоящего значения времени и предыдущего в миллисекундах преобразуем в десятичные часы
-    e_hours += (sec2  - sec1) / 3.6E6;  // 3'600'000
+    e_hours += (sec2  - sec1) / 3.6E6;  // 3600000
     EEPROM.put(0, e_hours);
     sec1 = sec2;                    // запоминаем время для следующей итерации
   }
@@ -557,8 +558,8 @@ void sensorsProcessing() {
 #if defined ECO_RPM
         if (vals[ECO_RPM_VALS])   // если разрешено в настройках
           switch (R) {            // включаем светотодиод в эко-интервале
-            case ECO_INTERVAL: gio::write(ECO_LED_PIN, HIGH); break;
-            default: gio::write(ECO_LED_PIN, LOW); break;
+            case ECO_INTERVAL: digitalWrite(ECO_LED_PIN, HIGH); break;
+            default: digitalWrite(ECO_LED_PIN, LOW); break;
           }
 #endif
         disp.displayInt(R);
@@ -660,8 +661,8 @@ void thermocouple() {
 
 /* --выводим версию программы, напряжение буферного аккумулятора (если есть) и время поездки-- */
 void isButtonSingle() {             // действия после ОДИНОЧНОГО нажатия кнопки
-  gio::write(LED_PIN, LOW);
-  disp.displayByte(_U, _3, _1, _4); // выводим версию программы на дисплей
+  digitalWrite(LED_PIN, LOW);
+  disp.displayByte(_U, _3, _1, _3); // выводим версию программы на дисплей
   lcd.clear();
   lcd.print(F("Elapsed T: "));
   lcd.print(h);
@@ -680,7 +681,7 @@ void isButtonSingle() {             // действия после ОДИНОЧ�
 
 /* --выводим температуру процессора и моточасы-- */
 void isButtonDouble() {             // действия после ДВОЙНОГО нажатия кнопки
-  gio::write(LED_PIN, LOW);
+  digitalWrite(LED_PIN, LOW);
   disp.displayInt(memoryFree());
   lcd.clear();
   EEPROM.get(0, e_hours);
@@ -719,7 +720,6 @@ void lcdUpdate() {
   lcd.setCursor(10, 1);
   lcd.print(char(4));   // левая половина значка аккумулятора
   lcd.print(char(5));   // правая половина
-  lcd.print(input_volt);
 }
 
 /* ---ОБРАБОТЧИК МЕНЮ НАСТРОЕК--- */
@@ -776,15 +776,14 @@ void menuHandler() {
               analogWrite (ECO_LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[5]])));
 # endif
               break;
-            case 6:
-              if (vals[6]) { // если равно единице обнуляем счётчик моточасов
+            case 6: if (vals[6]) { // если равно единице обнуляем счётчик моточасов
                 vals[6] = 0;
                 e_hours = 0;
                 EEPROM.put(0, e_hours);
               }
               break;
 # ifdef ECO_RPM
-            case 7: vals[7] = bool(vals[7]); break; // включение предупреждения eco-оборотов
+            case 7: vals[7] = constrain(bool(vals[7]), 0, 1); break; // включение предупреждения eco-оборотов
 # endif
           }
 
@@ -800,15 +799,14 @@ void menuHandler() {
               analogWrite (ECO_LED_PIN, pgm_read_byte(&(CRTgammaPGM[vals[4]])));
 # endif
               break;
-            case 5:
-              if (vals[5]) {
+            case 5: if (vals[5]) {
                 vals[5] = 0;
                 e_hours = 0;
                 EEPROM.put(0, e_hours);
               }
               break;
 # ifdef ECO_RPM
-            case 6: vals[6] = bool(vals[6]); break;
+            case 6: vals[6] = constrain(bool(vals[6]), 0, 1); break;
 # endif
           }
 #endif
@@ -846,8 +844,8 @@ void menuGUI() {
   }
 }
 
-/* ----очень хитрая ФУНКЦИЯ ДЛЯ ПЕЧАТИ ИЗ PROGMEM---- */
-void printFromPGM(const char* const* charMap) {
+/* ---очень хитрая ФУНКЦИЯ ДЛЯ ПЕЧАТИ ИЗ PROGMEM--- */
+void printFromPGM(int charMap) {
   uint8_t ptr = pgm_read_word(charMap);     // получаем адрес из таблицы ссылок
   while (pgm_read_byte(ptr) != NULL) {      // всю строку до нулевого символа
     lcd.print(char(pgm_read_byte(ptr)));    // выводим названия пунктов меню
@@ -866,10 +864,10 @@ void beep(uint8_t* ms) {
   *ms = (uint8_t)millis();
 
 #if defined BUZZER_ACTIVE
-  gio::write(BUZZER_PIN, HIGH);
+  digitalWrite(BUZZER_PIN, HIGH);
 
 #elif defined BUZZER_PASSIVE
-  tone(BUZZER_PIN, BUZZER_FREQUENCY);
+  tone (BUZZER_PIN, BUZZER_FREQUENCY);
 #endif
 }
 
@@ -878,10 +876,10 @@ void beepTick(uint8_t* ms) {
     bp = false;
 
 #if defined BUZZER_ACTIVE
-    gio::write(BUZZER_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
 
 #elif defined BUZZER_PASSIVE
-    noTone(BUZZER_PIN);
+    noTone (BUZZER_PIN);
 #endif
 
   }
